@@ -125,15 +125,15 @@ export class AdminService {
     const dbUsers = await this.db.user.findMany({
       include: {
         wallet: true,
-        gameBets: { select: { amount: true, payout: true } },
+        gameBets: { select: { betAmount: true, winAmount: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
 
     let topPlayersLeaderboard = dbUsers.map((u: any) => {
-      const totalWinnings = u.gameBets ? u.gameBets.reduce((acc: number, b: any) => acc + Number(b.payout || 0), 0) : 0;
-      const totalTurnover = u.gameBets ? u.gameBets.reduce((acc: number, b: any) => acc + Number(b.amount || 0), 0) : 0;
+      const totalWinnings = u.gameBets ? u.gameBets.reduce((acc: number, b: any) => acc + Number(b.winAmount || 0), 0) : 0;
+      const totalTurnover = u.gameBets ? u.gameBets.reduce((acc: number, b: any) => acc + Number(b.betAmount || 0), 0) : 0;
       const currentBalance = u.wallet ? Number(u.wallet.mainBalance || 0) : 0;
       return {
         id: u.id,

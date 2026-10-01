@@ -1,0 +1,21 @@
+{
+  "name": "@gaming-platform/workers",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "ts-node-dev src/main.ts"
+  },
+  "dependencies": {
+    "@gaming-platform/types": "workspace:*",
+    "bullmq": "^5.41.4",
+    "ioredis": "^5.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.7.0"
+  }
+}

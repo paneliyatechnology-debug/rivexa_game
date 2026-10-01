@@ -1,0 +1,246 @@
+@import "tailwindcss";
+
+:root {
+  /* Background Layering */
+  --bg-primary: #050B20;
+  --bg-secondary: #091735;
+  --bg-tertiary: #101C3A;
+
+  /* Brand Cyber Palette */
+  --neon-green: #00E5A0;
+  --electric-blue: #287BFF;
+  --purple: #873BFF;
+  --cyan: #00D9FF;
+  --pink: #FF3FA4;
+  --gold: #FFC928;
+
+  /* Text Colors */
+  --text-primary: #FFFFFF;
+  --text-secondary: #B8C7E6;
+  --text-muted: #7183A8;
+
+  /* Neon Borders */
+  --border-blue: rgba(40, 123, 255, 0.45);
+  --border-cyan: rgba(0, 217, 255, 0.55);
+  --border-purple: rgba(135, 59, 255, 0.55);
+  --border-green: rgba(0, 229, 160, 0.55);
+  --border-pink: rgba(255, 63, 164, 0.55);
+  --border-gold: rgba(255, 201, 40, 0.55);
+
+  /* White Transparencies */
+  --white-5: rgba(255, 255, 255, 0.05);
+  --white-8: rgba(255, 255, 255, 0.08);
+  --white-10: rgba(255, 255, 255, 0.10);
+  --white-15: rgba(255, 255, 255, 0.15);
+}
+
+body {
+  background-color: #050B20;
+  background-image: 
+    radial-gradient(circle at 75% 15%, rgba(40, 123, 255, 0.12), transparent 30%),
+    radial-gradient(circle at 25% 80%, rgba(135, 59, 255, 0.08), transparent 30%),
+    radial-gradient(circle at 90% 50%, rgba(0, 217, 255, 0.05), transparent 25%);
+  background-attachment: fixed;
+  color: #FFFFFF;
+  font-family: var(--font-poppins), system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050B20;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #101C3A;
+  border-radius: 9999px;
+  border: 1px solid rgba(40, 123, 255, 0.3);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #287BFF;
+}
+
+/* Custom Slim Neon Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(5, 11, 32, 0.5);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(40, 123, 255, 0.4);
+  border-radius: 9999px;
+  border: 1px solid rgba(0, 217, 255, 0.3);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 217, 255, 0.7);
+  box-shadow: 0 0 8px rgba(0, 217, 255, 0.6);
+}
+
+/* Hide native number input spinner arrows */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* Keyframe Animations */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(2deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(8px) rotate(-2deg);
+  }
+}
+
+@keyframes neonPulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(0, 217, 255, 0.25), 0 0 20px rgba(0, 217, 255, 0.10);
+  }
+  50% {
+    box-shadow: 0 0 14px rgba(0, 217, 255, 0.45), 0 0 35px rgba(0, 217, 255, 0.20);
+  }
+}
+
+@keyframes slowSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 5s ease-in-out infinite;
+}
+
+.animate-neon-pulse {
+  animation: neonPulse 3s ease-in-out infinite;
+}
+
+.animate-slow-spin {
+  animation: slowSpin 20s linear infinite;
+}
+
+.animate-marquee {
+  display: inline-block;
+  white-space: nowrap;
+  animation: marquee 25s linear infinite;
+}
+
+/* Glassmorphism utility classes */
+.glass-panel {
+  background: rgba(9, 23, 53, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.glass-panel-interactive {
+  background: rgba(9, 23, 53, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.30), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-interactive:hover {
+  background: rgba(16, 28, 58, 0.85);
+  border-color: rgba(0, 217, 255, 0.55);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px -6px rgba(0, 0, 0, 0.5), 0 0 20px rgba(0, 217, 255, 0.25);
+}
+
+/* Master Gaming Card Layering */
+.gaming-card {
+  background: linear-gradient(145deg, rgba(16, 28, 58, 0.95), rgba(5, 11, 32, 0.97));
+  border: 1px solid rgba(40, 123, 255, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.gaming-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 217, 255, 0.75);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 20px rgba(0, 217, 255, 0.25);
+}
+
+/* Diagonal Shine Sweep Button Effect */
+.btn-shine-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shine-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-120%);
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.25) 50%, transparent 70%);
+}
+
+.btn-shine-sweep:hover::after {
+  transform: translateX(120%);
+  transition: transform 0.7s ease;
+}
+
+/* Custom Text Gradients */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #FFF099 0%, #FFC928 50%, #FF9F1C 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-neon {
+  background: linear-gradient(135deg, #00E5A0 0%, #00D9FF 50%, #287BFF 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-fire {
+  background: linear-gradient(135deg, #FF3FA4 0%, #FF416C 50%, #FFC928 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

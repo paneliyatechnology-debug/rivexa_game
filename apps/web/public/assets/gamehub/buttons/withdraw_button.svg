@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="88" viewBox="0 0 320 88">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#287BFF"/><stop offset="1" stop-color="#287BFF"/></linearGradient><filter id="glow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+<rect x="4" y="4" width="312" height="80" rx="23" fill="#08152E" stroke="#287BFF" stroke-opacity=".7" stroke-width="2"/>
+<rect x="9" y="9" width="302" height="70" rx="19" fill="url(#g)" filter="url(#glow)"/>
+<text x="160" y="53" font-family="Inter,Arial,sans-serif" font-size="23" font-weight="700" text-anchor="middle" fill="#FFFFFF" letter-spacing="1">↗ WITHDRAW</text>
+</svg>

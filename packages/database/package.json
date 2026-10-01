@@ -1,0 +1,19 @@
+{
+  "name": "@gaming-platform/database",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "prisma generate && tsc && mkdir -p dist/generated && cp -r src/generated/* dist/generated/",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.3.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.3.0",
+    "typescript": "^5.7.0"
+  }
+}

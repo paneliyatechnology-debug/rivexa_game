@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs_20", "pnpm"]
+
+[phases.build]
+cmds = ["cd ../.. && pnpm install --no-frozen-lockfile", "cd ../.. && pnpm --filter=@gaming-platform/types build && pnpm --filter=@gaming-platform/database build && pnpm --filter=@gaming-platform/auth build && pnpm --filter=api exec nest build"]
+
+[start]
+cmd = "node dist/main.js"

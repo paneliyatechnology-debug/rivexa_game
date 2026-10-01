@@ -72,6 +72,25 @@ export class TenantMemberController {
     return this.memberService.listPlayers(actor.tenantId, actor.id, actor.role as any, Number(page ?? 1), Number(limit ?? 50));
   }
 
+  @Get('player-history')
+  async getPlayerHistory(
+    @Headers('authorization') auth: string,
+    @Query('userId') userId?: string,
+    @Query('gameType') gameType?: string,
+    @Query('status') status?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const actor = await resolveActor(auth, this.authService);
+    return this.memberService.getPlayerHistory(actor.tenantId, actor.id, actor.role as any, {
+      userId,
+      gameType,
+      status,
+      page: Number(page ?? 1),
+      limit: Number(limit ?? 30),
+    });
+  }
+
   @Post('players')
   async addPlayer(@Headers('authorization') auth: string, @Body('userId') userId: string) {
     const actor = await resolveActor(auth, this.authService);

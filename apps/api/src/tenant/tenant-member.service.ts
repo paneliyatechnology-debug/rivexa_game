@@ -611,6 +611,406 @@ export class TenantMemberService {
     return { logs, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
+  // ─── Fetch playing history of players under this merchant ──────────────────
+  async getPlayerHistory(
+    tenantId: string,
+    actorId: string,
+    actorRole: MemberRole,
+    filters: {
+      userId?: string;
+      gameType?: string;
+      status?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) {
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 30;
+
+    // 1. Determine target player user IDs
+    const wherePlayer: any = { tenantId };
+    if (actorRole !== 'SUPER_ADMIN' && actorRole !== 'SUB_ADMIN') {
+      const agentIds = actorRole === 'SUPER_AGENT'
+        ? [actorId, ...(await this.getDescendantIds(actorId))]
+        : [actorId];
+      wherePlayer.agentId = { in: agentIds };
+    }
+
+    if (filters.userId) {
+      wherePlayer.userId = filters.userId;
+    }
+
+    const tenantPlayers = await this.db.tenantPlayer.findMany({
+      where: wherePlayer,
+      select: {
+        userId: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    const emptySummary = { totalBets: 0, totalBetAmount: 0, totalWinAmount: 0, netGGR: 0 };
+    if (tenantPlayers.length === 0) {
+      return { bets: [], total: 0, page, limit, totalPages: 0, summary: emptySummary };
+    }
+
+    const playerMap = new Map<string, { id: string; name: string; email: string }>();
+    const userIds: string[] = [];
+    for (const tp of tenantPlayers) {
+      if (tp.user) {
+        userIds.push(tp.userId);
+        playerMap.set(tp.userId, {
+          id: tp.userId,
+          name: tp.user.name || 'Player',
+          email: tp.user.email,
+        });
+      }
+    }
+
+    if (userIds.length === 0) {
+      return { bets: [], total: 0, page, limit, totalPages: 0, summary: emptySummary };
+    }
+
+    const statusFilter = filters.status ? filters.status.toUpperCase() : undefined;
+    const gameTypeFilter = filters.gameType ? filters.gameType.toUpperCase() : undefined;
+
+    const allBets: Array<{
+      id: string;
+      userId: string;
+      playerName: string;
+      playerEmail: string;
+      gameType: string;
+      gameSlug: string;
+      betAmount: number;
+      winAmount: number;
+      status: string;
+      details: string;
+      createdAt: Date;
+    }> = [];
+
+    // Query 1: ParityBets
+    if (!gameTypeFilter || gameTypeFilter.includes('PARITY') || gameTypeFilter.includes('FAST')) {
+      const parityWhere: any = { userId: { in: userIds } };
+      const parityBets = await (this.db as any).parityBet.findMany({
+        where: parityWhere,
+        include: { period: true },
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const b of parityBets) {
+        const p = playerMap.get(b.userId);
+        const s = String(b.status || '').toUpperCase();
+        const normStatus = (s === 'WON' || s === 'CASHED_OUT' || s === 'WIN') ? 'WON' : (s === 'LOST' || s === 'BUSTED' || s === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: b.id,
+          userId: b.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: b.period?.gameType === '60' ? 'Parity (60s)' : 'Fast Parity (30s)',
+          gameSlug: 'parity',
+          betAmount: Number(b.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(b.payout || 0) : 0,
+          status: normStatus,
+          details: `Select: ${b.selectOption || '—'} | Period: #${b.periodId || '—'}${b.period?.resultNumber !== undefined ? ` (Res: ${b.period.resultNumber})` : ''}`,
+          createdAt: b.createdAt,
+        });
+      }
+    }
+
+    // Query 2: MinesGame
+    if (!gameTypeFilter || gameTypeFilter.includes('MINES')) {
+      const minesWhere: any = { userId: { in: userIds } };
+      const minesGames = await (this.db as any).minesGame.findMany({
+        where: minesWhere,
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const m of minesGames) {
+        const p = playerMap.get(m.userId);
+        const s = String(m.status || '').toUpperCase();
+        const normStatus = (s === 'WON' || s === 'CASHED_OUT' || s === 'WIN') ? 'WON' : (s === 'LOST' || s === 'BUSTED' || s === 'LOSE') ? 'LOST' : 'PENDING';
+        const multVal = Number(m.multiplier || 0);
+        const payoutVal = Number(m.payout ?? m.profit ?? 0);
+        allBets.push({
+          id: m.id,
+          userId: m.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Mines',
+          gameSlug: 'mines',
+          betAmount: Number(m.betAmount || 0),
+          winAmount: normStatus === 'WON' ? payoutVal : 0,
+          status: normStatus,
+          details: `Mines: ${m.mineCount || '—'} | Multiplier: ${multVal}x`,
+          createdAt: m.createdAt,
+        });
+      }
+    }
+
+    // Query 3: JetBet (JetX / Aviator)
+    if (!gameTypeFilter || gameTypeFilter.includes('JET') || gameTypeFilter.includes('AVIATOR')) {
+      const jetWhere: any = { userId: { in: userIds } };
+      const jetBets = await (this.db as any).jetBet.findMany({
+        where: jetWhere,
+        include: { round: true },
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const j of jetBets) {
+        const p = playerMap.get(j.userId);
+        const s = String(j.status || '').toUpperCase();
+        const normStatus = (s === 'WON' || s === 'CASHED_OUT' || s === 'WIN') ? 'WON' : (s === 'LOST' || s === 'BUSTED' || s === 'CRASHED' || s === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: j.id,
+          userId: j.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'JetX Flight',
+          gameSlug: 'jetx',
+          betAmount: Number(j.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(j.payout || 0) : 0,
+          status: normStatus,
+          details: `Cashed @ ${j.multiplier || 0}x | Crash: ${j.round?.crashMultiplier || '—'}x`,
+          createdAt: j.createdAt,
+        });
+      }
+    }
+
+    // Query 4: CrashBet
+    if (!gameTypeFilter || gameTypeFilter.includes('CRASH')) {
+      const crashWhere: any = { userId: { in: userIds } };
+      const crashBets = await (this.db as any).crashBet.findMany({
+        where: crashWhere,
+        include: { round: true },
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const c of crashBets) {
+        const p = playerMap.get(c.userId);
+        const s = String(c.status || '').toUpperCase();
+        const normStatus = (s === 'WON' || s === 'CASHED_OUT' || s === 'WIN') ? 'WON' : (s === 'LOST' || s === 'BUSTED' || s === 'CRASHED' || s === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: c.id,
+          userId: c.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Crash Game',
+          gameSlug: 'crash',
+          betAmount: Number(c.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(c.payout || 0) : 0,
+          status: normStatus,
+          details: `Cashed @ ${c.multiplier || 0}x | Crash: ${c.round?.crashMultiplier || '—'}x`,
+          createdAt: c.createdAt,
+        });
+      }
+    }
+
+    // Query 5: AndarBaharBet
+    if (!gameTypeFilter || gameTypeFilter.includes('ANDAR') || gameTypeFilter.includes('BAHAR')) {
+      const abWhere: any = { userId: { in: userIds } };
+      const abBets = await (this.db as any).andarBaharBet.findMany({
+        where: abWhere,
+        include: { round: true },
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const a of abBets) {
+        const p = playerMap.get(a.userId);
+        const s = String(a.status || '').toUpperCase();
+        const normStatus = (s === 'WON' || s === 'CASHED_OUT' || s === 'WIN') ? 'WON' : (s === 'LOST' || s === 'BUSTED' || s === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: a.id,
+          userId: a.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Andar Bahar',
+          gameSlug: 'andar-bahar',
+          betAmount: Number(a.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(a.payout || 0) : 0,
+          status: normStatus,
+          details: `Side: ${a.side || '—'} | Winner: ${a.round?.winningSide || '—'}`,
+          createdAt: a.createdAt,
+        });
+      }
+    }
+
+    // Query 6: SpinBet
+    if (!gameTypeFilter || gameTypeFilter.includes('SPIN')) {
+      const spinWhere: any = { userId: { in: userIds } };
+      const spinBets = await (this.db as any).spinBet.findMany({
+        where: spinWhere,
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const s of spinBets) {
+        const p = playerMap.get(s.userId);
+        const st = String(s.status || '').toUpperCase();
+        const normStatus = (st === 'WON' || st === 'CASHED_OUT' || st === 'WIN') ? 'WON' : (st === 'LOST' || st === 'BUSTED' || st === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: s.id,
+          userId: s.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Spin Wheel',
+          gameSlug: 'spin',
+          betAmount: Number(s.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(s.payout || 0) : 0,
+          status: normStatus,
+          details: `Segment: ${s.selectedSegment || '—'} | Multiplier: ${s.multiplier || 1}x`,
+          createdAt: s.createdAt,
+        });
+      }
+    }
+
+    // Query 7: DiceBet
+    if (!gameTypeFilter || gameTypeFilter.includes('DICE')) {
+      const diceWhere: any = { userId: { in: userIds } };
+      const diceBets = await (this.db as any).diceBet.findMany({
+        where: diceWhere,
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const d of diceBets) {
+        const p = playerMap.get(d.userId);
+        const st = String(d.status || '').toUpperCase();
+        const normStatus = (st === 'WON' || st === 'CASHED_OUT' || st === 'WIN') ? 'WON' : (st === 'LOST' || st === 'BUSTED' || st === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: d.id,
+          userId: d.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Dice Roll',
+          gameSlug: 'dice',
+          betAmount: Number(d.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(d.payout || 0) : 0,
+          status: normStatus,
+          details: `Target: ${d.targetNumber || '—'} | Rolled: ${d.rolledNumber ?? '—'}`,
+          createdAt: d.createdAt,
+        });
+      }
+    }
+
+    // Query 8: PushparaniBet
+    if (!gameTypeFilter || gameTypeFilter.includes('PUSHPA')) {
+      const prWhere: any = { userId: { in: userIds } };
+      const prBets = await (this.db as any).pushparaniBet.findMany({
+        where: prWhere,
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const pr of prBets) {
+        const p = playerMap.get(pr.userId);
+        const st = String(pr.status || '').toUpperCase();
+        const normStatus = (st === 'WON' || st === 'CASHED_OUT' || st === 'WIN') ? 'WON' : (st === 'LOST' || st === 'BUSTED' || st === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: pr.id,
+          userId: pr.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Pushparani',
+          gameSlug: 'pushparani',
+          betAmount: Number(pr.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(pr.payout || 0) : 0,
+          status: normStatus,
+          details: `Selected Card: ${pr.selectedCard || '—'}`,
+          createdAt: pr.createdAt,
+        });
+      }
+    }
+
+    // Query 9: CoinFlipBet
+    if (!gameTypeFilter || gameTypeFilter.includes('COIN')) {
+      const cfWhere: any = { userId: { in: userIds } };
+      const cfBets = await (this.db as any).coinFlipBet.findMany({
+        where: cfWhere,
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const cf of cfBets) {
+        const p = playerMap.get(cf.userId);
+        const st = String(cf.status || '').toUpperCase();
+        const normStatus = (st === 'WON' || st === 'CASHED_OUT' || st === 'WIN') ? 'WON' : (st === 'LOST' || st === 'BUSTED' || st === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: cf.id,
+          userId: cf.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: 'Coin Flip',
+          gameSlug: 'coinflip',
+          betAmount: Number(cf.amount || 0),
+          winAmount: normStatus === 'WON' ? Number(cf.payout || 0) : 0,
+          status: normStatus,
+          details: `Side: ${cf.selectedSide || '—'} | Result: ${cf.resultSide || '—'}`,
+          createdAt: cf.createdAt,
+        });
+      }
+    }
+
+    // Query 10: Generic GameBets (Sports / Casino)
+    if (!gameTypeFilter || gameTypeFilter.includes('SPORTS') || gameTypeFilter.includes('GAME')) {
+      const gbWhere: any = { userId: { in: userIds } };
+      const gameBets = await (this.db as any).gameBet.findMany({
+        where: gbWhere,
+        include: { game: true },
+        take: 200,
+        orderBy: { createdAt: 'desc' },
+      }).catch(() => []);
+      for (const gb of gameBets) {
+        const p = playerMap.get(gb.userId);
+        const st = String(gb.status || '').toUpperCase();
+        const normStatus = (st === 'WON' || st === 'CASHED_OUT' || st === 'WIN') ? 'WON' : (st === 'LOST' || st === 'BUSTED' || st === 'LOSE') ? 'LOST' : 'PENDING';
+        allBets.push({
+          id: gb.id,
+          userId: gb.userId,
+          playerName: p?.name || 'Player',
+          playerEmail: p?.email || '',
+          gameType: gb.game?.name || gb.betType || 'Casino Bet',
+          gameSlug: gb.game?.slug || 'casino',
+          betAmount: Number(gb.betAmount || 0),
+          winAmount: normStatus === 'WON' ? Number(gb.winAmount || 0) : 0,
+          status: normStatus,
+          details: `Period: ${gb.periodNumber || 'N/A'} | Multiplier: ${gb.multiplier || 1}x`,
+          createdAt: gb.createdAt,
+        });
+      }
+    }
+
+    // Sort combined list by createdAt descending
+    allBets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    // Filter by status if specified
+    const filteredBets = statusFilter
+      ? allBets.filter((b) => b.status === statusFilter)
+      : allBets;
+
+    // Calculate Summary Metrics
+    let totalBetAmount = 0;
+    let totalWinAmount = 0;
+    for (const bet of filteredBets) {
+      totalBetAmount += bet.betAmount;
+      totalWinAmount += bet.winAmount;
+    }
+    const netGGR = totalBetAmount - totalWinAmount;
+
+    // Apply pagination
+    const total = filteredBets.length;
+    const startIndex = (page - 1) * limit;
+    const paginatedBets = filteredBets.slice(startIndex, startIndex + limit);
+
+    return {
+      bets: paginatedBets,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+      summary: {
+        totalBets: total,
+        totalBetAmount,
+        totalWinAmount,
+        netGGR,
+      },
+    };
+  }
+
   // ─── Internal: get all descendant member IDs ────────────────────────────────
   private async getDescendantIds(memberId: string): Promise<string[]> {
     const all: string[] = [];

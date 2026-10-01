@@ -335,7 +335,7 @@ export function DataTablePagination({
 
 // ─── MAIN COMPONENT ─────────────────────────────────────────────────────────
 
-export default function TenantDashboardPage() {
+export default function TenantDashboardPage({ initialTab }: { initialTab?: string }) {
   const router = useRouter();
   const [member, setMember] = useState<TenantMember | null>(null);
   const [stats, setStats] = useState<any>(null);
@@ -344,21 +344,20 @@ export default function TenantDashboardPage() {
   const [creditLogs, setCreditLogs] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [publicGames, setPublicGames] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(initialTab || 'overview');
   const [loading, setLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const VALID_TABS = useMemo(() => ['overview', 'members', 'roles', 'games', 'players', 'history', 'credits', 'audit'], []);
 
   // Tab routing sync helper
   const handleTabChange = useCallback((tabId: string) => {
     setActiveTab(tabId);
     if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      if (tabId === 'overview') {
-        url.searchParams.delete('tab');
-      } else {
-        url.searchParams.set('tab', tabId);
+      const targetPath = tabId === 'overview' ? '/tenant/dashboard' : `/tenant/${tabId}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({}, '', targetPath);
       }
-      window.history.pushState({}, '', url.toString());
     }
   }, []);
 
@@ -645,33 +644,43 @@ export default function TenantDashboardPage() {
     fetchPlayerHistory(historyFilterUser, historyFilterGame, historyFilterStatus, historyPage, historyLimit);
   }, [member, fetchMembers, fetchPlayers, fetchCreditLogs, fetchStats, fetchAuditLogs, fetchPlayerHistory, historyFilterUser, historyFilterGame, historyFilterStatus, historyPage, historyLimit]);
 
-  // Parse initial tab from URL query params
+  // Parse initial tab from URL path, query params, or prop
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabFromUrl = params.get('tab');
-      const VALID_TABS = ['overview', 'members', 'roles', 'games', 'players', 'history', 'credits', 'audit'];
-      if (tabFromUrl && VALID_TABS.includes(tabFromUrl)) {
-        setActiveTab(tabFromUrl);
+    if (initialTab && VALID_TABS.includes(initialTab)) {
+      setActiveTab(initialTab);
+    } else if (typeof window !== 'undefined') {
+      const pathSeg = window.location.pathname.split('/').pop();
+      if (pathSeg && VALID_TABS.includes(pathSeg)) {
+        setActiveTab(pathSeg);
+      } else {
+        const params = new URLSearchParams(window.location.search);
+        const tabFromUrl = params.get('tab');
+        if (tabFromUrl && VALID_TABS.includes(tabFromUrl)) {
+          setActiveTab(tabFromUrl);
+        }
       }
     }
-  }, []);
+  }, [initialTab, VALID_TABS]);
 
   // Sync tab state on browser Back/Forward navigation (popstate)
   useEffect(() => {
     const handlePopState = () => {
       if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const tab = params.get('tab') || 'overview';
-        const VALID_TABS = ['overview', 'members', 'roles', 'games', 'players', 'history', 'credits', 'audit'];
-        if (VALID_TABS.includes(tab)) {
-          setActiveTab(tab);
+        const pathSeg = window.location.pathname.split('/').pop();
+        if (pathSeg && VALID_TABS.includes(pathSeg)) {
+          setActiveTab(pathSeg);
+        } else {
+          const params = new URLSearchParams(window.location.search);
+          const tab = params.get('tab') || 'overview';
+          if (VALID_TABS.includes(tab)) {
+            setActiveTab(tab);
+          }
         }
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [VALID_TABS]);
 
   // Securely guard active tab based on member role permissions
   useEffect(() => {

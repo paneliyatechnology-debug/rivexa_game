@@ -92,6 +92,34 @@ export class CricketMarketsController {
     };
   }
 
+  @Get('bet-settings')
+  async getPublicBetSettings() {
+    const settings = this.marketsService.getBetSettings();
+    return {
+      success: true,
+      data: settings,
+    };
+  }
+
+  @Get('admin/bet-settings')
+  async getAdminBetSettings() {
+    const settings = this.marketsService.getBetSettings();
+    return {
+      success: true,
+      data: settings,
+    };
+  }
+
+  @Patch('admin/bet-settings')
+  async updateAdminBetSettings(@Body() body: any) {
+    const settings = await this.marketsService.updateBetSettings(body);
+    return {
+      success: true,
+      message: 'Sports & Bet settings updated successfully',
+      data: settings,
+    };
+  }
+
   @Get('admin/odd-even/settings')
   async getOddEvenSettings() {
     const settings = await this.marketsService.getOddEvenSettings();

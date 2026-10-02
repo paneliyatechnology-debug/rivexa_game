@@ -489,6 +489,27 @@ export class AdminSportsController {
     return { success: true, statusCode: 200, message: 'Match deleted successfully' };
   }
 
+  @Get('bet-settings')
+  async getBetSettings() {
+    const settings = this.cricketMarketsService.getBetSettings();
+    return {
+      success: true,
+      statusCode: 200,
+      data: settings,
+    };
+  }
+
+  @Patch('bet-settings')
+  async updateBetSettings(@Body() body: any) {
+    const settings = await this.cricketMarketsService.updateBetSettings(body);
+    return {
+      success: true,
+      statusCode: 200,
+      message: 'Bet settings updated successfully',
+      data: settings,
+    };
+  }
+
   @Post('seed')
   async seedData() {
     await this.sportsService.seedInitialSportsData();

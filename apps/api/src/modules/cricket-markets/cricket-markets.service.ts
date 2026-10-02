@@ -1,12 +1,53 @@
-import { Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
+import { SportsGateway } from '../../sports/sports.gateway.js';
 
 @Injectable()
 export class CricketMarketsService implements OnModuleInit {
   private readonly logger = new Logger(CricketMarketsService.name);
   private readonly cache = new Map<string, { data: any; expiresAt: number }>();
 
-  constructor(private readonly db: DatabaseService) {}
+  // Global Admin Bet Settings State
+  private betSettings = {
+    minStake: 10,
+    maxStake: 50000,
+    maxProfitCap: 200000,
+    bookmakerMargin: 4.5,
+    autoSettle: true,
+    autoRefundVoid: true,
+    userCancelWindowSec: 10,
+    oddEvenEnabled: true,
+    oddEvenDefaultOdds: 1.90,
+    maxBetsPerUserPerMatch: 20,
+    liveBetDelaySec: 2,
+    betNotice: 'Bet responsibly. Odds fluctuate in real time during live sports matches.',
+  };
+
+  constructor(
+    private readonly db: DatabaseService,
+    @Optional() @Inject(forwardRef(() => SportsGateway))
+    private readonly sportsGateway?: SportsGateway
+  ) {}
+
+  public getBetSettings() {
+    return this.betSettings;
+  }
+
+  public async updateBetSettings(newSettings: Partial<typeof this.betSettings>) {
+    this.betSettings = {
+      ...this.betSettings,
+      ...newSettings,
+    };
+
+    if (typeof newSettings.oddEvenEnabled === 'boolean' || newSettings.oddEvenDefaultOdds) {
+      await this.updateOddEvenSettings({
+        enabled: newSettings.oddEvenEnabled,
+        defaultOdds: newSettings.oddEvenDefaultOdds,
+      });
+    }
+
+    return this.betSettings;
+  }
 
   async onModuleInit() {
     try {
@@ -380,9 +421,6 @@ export class CricketMarketsService implements OnModuleInit {
       }
 
       const currentOdds = Number(selection.backPrice);
-      const submittedOdds = Number(item.odds);
-
-      // Decimal-safe calculations
       const stakeNum = Number(item.stake);
       const itemReturn = stakeNum * currentOdds;
 
@@ -400,19 +438,69 @@ export class CricketMarketsService implements OnModuleInit {
       });
     }
 
+    // Enforce Admin Bet Settings Limits
+    if (totalStake < this.betSettings.minStake) {
+      throw new BadRequestException(`Minimum stake required per bet is ₹${this.betSettings.minStake}`);
+    }
+    if (totalStake > this.betSettings.maxStake) {
+      throw new BadRequestException(`Maximum stake limit per bet is ₹${this.betSettings.maxStake.toLocaleString()}`);
+    }
+
+    // REAL WALLET BALANCE DEDUCTION
+    const targetUserId = body.userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.userId)
+      ? body.userId
+      : '00000000-0000-0000-0000-000000000000';
+
+    let wallet = await this.db.wallet.findUnique({
+      where: { userId: targetUserId },
+    });
+
+    if (wallet) {
+      const currentBalance = Number(wallet.mainBalance);
+      if (currentBalance < totalStake) {
+        throw new BadRequestException(`Insufficient wallet balance (₹${currentBalance.toFixed(2)}). Stake required: ₹${totalStake.toFixed(2)}`);
+      }
+
+      // Deduct balance from user wallet
+      wallet = await this.db.wallet.update({
+        where: { id: wallet.id },
+        data: {
+          mainBalance: { decrement: totalStake },
+        },
+      });
+
+      // Record transaction
+      try {
+        await this.db.walletTransaction.create({
+          data: {
+            walletId: wallet.id,
+            userId: targetUserId,
+            type: 'GAME_DEBIT',
+            amount: totalStake,
+            balanceBefore: currentBalance,
+            balanceAfter: Number(wallet.mainBalance),
+            status: 'COMPLETED',
+            description: `Sports bet placed on match ${body.matchId}`,
+          },
+        });
+      } catch (txErr) {
+        // Continue if transaction logging fails
+      }
+    }
+
     const totalProfit = totalPotentialReturn - totalStake;
-    const betReference = `TB-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+    const betReference = `BET-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const testBet = await this.db.testBet.create({
       data: {
         betReference,
-        userId: body.userId || undefined,
+        userId: targetUserId,
         matchId: body.matchId,
         totalStake,
         potentialReturn: totalPotentialReturn,
         potentialProfit: totalProfit,
         status: 'OPEN',
-        isTestMode: true,
+        isTestMode: false,
         selections: {
           create: validatedSelections,
         },
@@ -427,14 +515,15 @@ export class CricketMarketsService implements OnModuleInit {
 
     return {
       success: true,
-      message: 'Test bet placed successfully in non-monetary Development/Test Mode!',
+      message: 'Bet placed successfully! Wallet balance updated.',
       betReference: testBet.betReference,
+      newBalance: wallet ? Number(wallet.mainBalance) : undefined,
       testBet,
     };
   }
 
   async getTestBetHistory(userId?: string) {
-    const whereClause: any = { isTestMode: true };
+    const whereClause: any = {};
     if (userId) whereClause.userId = userId;
 
     return await this.db.testBet.findMany({
@@ -492,7 +581,8 @@ export class CricketMarketsService implements OnModuleInit {
 
   async settleTestBet(betId: string, status: string, summary?: string) {
     const validStatuses = ['WON', 'LOST', 'VOID', 'CANCELLED'];
-    if (!validStatuses.includes(status.toUpperCase())) {
+    const newStatus = status.toUpperCase();
+    if (!validStatuses.includes(newStatus)) {
       throw new BadRequestException(`Invalid status: ${status}. Must be one of ${validStatuses.join(', ')}`);
     }
 
@@ -505,10 +595,12 @@ export class CricketMarketsService implements OnModuleInit {
       throw new NotFoundException(`Test bet with ID "${betId}" not found`);
     }
 
+    const previousStatus = testBet.status;
+
     const updatedBet = await this.db.testBet.update({
       where: { id: betId },
       data: {
-        status: status.toUpperCase(),
+        status: newStatus,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
@@ -518,15 +610,67 @@ export class CricketMarketsService implements OnModuleInit {
       },
     });
 
+    // AUTO-ADD WINNINGS / VOID REFUND TO REAL USER WALLET
+    const userId = testBet.userId;
+    let payoutAmount = 0;
+
+    if (newStatus === 'WON') {
+      payoutAmount = Number(testBet.potentialReturn);
+    } else if (newStatus === 'VOID' || newStatus === 'CANCELLED') {
+      payoutAmount = Number(testBet.totalStake);
+    }
+
+    if (userId && previousStatus !== newStatus && payoutAmount > 0) {
+      let wallet = await this.db.wallet.findUnique({ where: { userId } });
+      if (wallet) {
+        const balanceBefore = Number(wallet.mainBalance);
+        wallet = await this.db.wallet.update({
+          where: { id: wallet.id },
+          data: {
+            mainBalance: { increment: payoutAmount },
+          },
+        });
+
+        // Record wallet transaction log
+        try {
+          await this.db.walletTransaction.create({
+            data: {
+              walletId: wallet.id,
+              userId,
+              type: newStatus === 'WON' ? 'GAME_CREDIT' : 'REFUND',
+              amount: payoutAmount,
+              balanceBefore,
+              balanceAfter: Number(wallet.mainBalance),
+              status: 'COMPLETED',
+              description: newStatus === 'WON'
+                ? `Sports bet payout won - Ref: ${testBet.betReference}`
+                : `Refund for ${newStatus.toLowerCase()} sports bet - Ref: ${testBet.betReference}`,
+            },
+          });
+        } catch (txErr) {
+          this.logger.warn(`Failed writing wallet transaction log: ${txErr}`);
+        }
+
+        // Broadcast real-time balance update over WebSockets
+        try {
+          if (this.sportsGateway?.server) {
+            this.sportsGateway.server.to(`user:${userId}`).emit('wallet:update', {
+              mainBalance: Number(wallet.mainBalance),
+              userId,
+            });
+          }
+        } catch (wsErr) {}
+      }
+    }
+
     // Create settlement log
-    const payout = status.toUpperCase() === 'WON' ? Number(testBet.potentialReturn) : 0;
     await this.db.testBetSettlement.create({
       data: {
         testBetId: testBet.id,
         resultSource: 'ADMIN_MANUAL_SETTLEMENT',
         settledBy: 'ADMIN',
-        settlementSummary: summary || `Test bet settled as ${status.toUpperCase()} by Admin`,
-        payoutAmount: payout,
+        settlementSummary: summary || `Bet settled as ${newStatus} by Admin`,
+        payoutAmount,
       },
     });
 
@@ -640,6 +784,8 @@ export class CricketMarketsService implements OnModuleInit {
       });
     }
 
+    this.clearCache();
+
     return await this.db.cricketMarket.findUnique({
       where: { id: createdMarket.id },
       include: { selections: true },
@@ -647,9 +793,11 @@ export class CricketMarketsService implements OnModuleInit {
   }
 
   async deleteMarket(marketId: string) {
-    return await this.db.cricketMarket.delete({
+    const deleted = await this.db.cricketMarket.delete({
       where: { id: marketId },
     });
+    this.clearCache();
+    return deleted;
   }
 }
 

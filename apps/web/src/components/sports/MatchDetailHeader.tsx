@@ -30,155 +30,146 @@ export function MatchDetailHeader({
   });
 
   return (
-    <div className="w-full bg-gradient-to-b from-[#0A1635] via-[#08132E] to-[#050C20] border-b border-white/10 pt-4 pb-6 px-4">
-      <div className="max-w-7xl mx-auto space-y-4">
-        {/* Breadcrumb & Connection Status */}
-        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[#7183A8]">
-          <nav className="flex items-center gap-1.5 flex-wrap">
-            <Link href="/sports" className="hover:text-white transition-colors">
+    <div className="w-full bg-gradient-to-b from-[#142B63] via-[#0F214F] to-[#0D1C44] border border-cyan-500/30 p-2 sm:p-3.5 rounded-2xl shadow-lg space-y-2">
+      {/* TOP META BAR (Breadcrumbs, Status & Venue on Desktop) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+        <div className="flex items-center gap-2 flex-wrap">
+          <nav className="hidden sm:flex items-center gap-1.5">
+            <Link href="/sports" className="hover:text-cyan-300 transition-colors">
               Sports
             </Link>
-            <ChevronRight className="w-3.5 h-3.5 text-white/30" />
-            <Link href={`/sports?sport=${match.sport?.slug || 'cricket'}`} className="hover:text-white transition-colors">
+            <ChevronRight className="w-3.5 h-3.5 text-white/40" />
+            <Link href={`/sports?sport=${match.sport?.slug || 'cricket'}`} className="hover:text-cyan-300 transition-colors">
               {match.sport?.name || 'Cricket'}
             </Link>
-            <ChevronRight className="w-3.5 h-3.5 text-white/30" />
-            <span className="text-[#00E5A0] font-medium">{match.competition?.name || 'International'}</span>
+            <ChevronRight className="w-3.5 h-3.5 text-white/40" />
+            <span className="text-cyan-300 font-extrabold">{match.competition?.name || 'International'}</span>
           </nav>
+          
+          <div className="flex items-center gap-1.5">
+            <MatchStatusBadge status={match.status} />
+            <span className="text-[10px] sm:text-xs font-extrabold px-2 py-0.5 rounded-full bg-[#1A3578] text-cyan-300 border border-cyan-400/40 shadow-[0_0_8px_rgba(6,182,212,0.3)]">
+              {match.matchType || 'T20'}
+            </span>
+          </div>
+        </div>
 
+        <div className="flex items-center gap-3 text-[11px] sm:text-xs text-slate-200">
+          {match.venue && (
+            <span className="hidden lg:flex items-center gap-1 bg-[#162C63]/80 px-2.5 py-1 rounded-lg border border-cyan-400/20">
+              <MapPin className="w-3.5 h-3.5 text-cyan-300" />
+              <span className="truncate max-w-[200px]">{match.venue}</span>
+            </span>
+          )}
+          <span className="hidden sm:flex items-center gap-1 bg-[#162C63]/80 px-2.5 py-1 rounded-lg border border-cyan-400/20">
+            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+            {formattedDate} • {formattedTime}
+          </span>
           <ConnectionIndicator isConnected={isConnected} />
         </div>
+      </div>
 
-        {/* Title Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <MatchStatusBadge status={match.status} />
-              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#101F42] text-[#00D9FF] border border-white/10">
-                {match.matchType || 'T20'}
-              </span>
-              <span className="text-xs text-[#7183A8] font-medium hidden sm:inline">
-                {match.competition?.name}
-              </span>
+      {/* MOBILE COMPACT SCORE BAR (Visible on mobile only) */}
+      <div className="sm:hidden space-y-1.5">
+        <div className="flex items-center justify-between gap-1.5 bg-[#0A173A]/90 p-2 rounded-xl border border-cyan-400/30 shadow-inner">
+          {/* Team A Mobile */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <TeamIdentity team={match.teamA} size="sm" showFull={false} />
+            <div className="min-w-0">
+              <div className="text-[11px] font-black text-white truncate leading-tight">{match.teamA?.shortName || match.teamA?.name}</div>
+              <div className="font-mono text-xs font-black text-cyan-300 leading-tight">
+                {score?.teamAScore || 'Yet to bat'}
+                {score?.teamAOvers && <span className="text-[9px] text-slate-300 font-normal ml-1">({score.teamAOvers}ov)</span>}
+              </div>
             </div>
-            <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-white tracking-tight">
-              {match.teamA?.name} vs {match.teamB?.name}
-            </h1>
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-[#7183A8] bg-[#0A1633] px-3.5 py-2 rounded-xl border border-white/5">
-            {match.venue && (
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3.5 h-3.5 text-[#00D9FF]" />
-                {match.venue}
-              </span>
+          {/* VS / Status Summary Mobile */}
+          <div className="px-1.5 py-1 bg-[#102456] rounded-lg border border-cyan-500/30 text-center shrink-0 max-w-[110px]">
+            {score?.statusText ? (
+              <div className="text-[9px] font-extrabold text-amber-300 leading-tight truncate">{score.statusText}</div>
+            ) : match.resultSummary ? (
+              <div className="text-[9px] font-extrabold text-emerald-300 leading-tight truncate">{match.resultSummary}</div>
+            ) : (
+              <div className="text-[9px] font-bold text-cyan-400">VS</div>
             )}
-            <span className="flex items-center gap-1 border-l border-white/10 pl-3">
-              <Calendar className="w-3.5 h-3.5 text-[#287BFF]" />
-              {formattedDate}
-            </span>
-            <span className="flex items-center gap-1 border-l border-white/10 pl-3">
-              <Clock className="w-3.5 h-3.5 text-[#287BFF]" />
-              {formattedTime}
-            </span>
+          </div>
+
+          {/* Team B Mobile */}
+          <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end text-right">
+            <div className="min-w-0">
+              <div className="text-[11px] font-black text-white truncate leading-tight">{match.teamB?.shortName || match.teamB?.name}</div>
+              <div className="font-mono text-xs font-black text-cyan-300 leading-tight">
+                {score?.teamBScore || 'Yet to bat'}
+                {score?.teamBOvers && <span className="text-[9px] text-slate-300 font-normal ml-1">({score.teamBOvers}ov)</span>}
+              </div>
+            </div>
+            <TeamIdentity team={match.teamB} size="sm" showFull={false} />
           </div>
         </div>
+      </div>
 
-        {/* Live Score Banner */}
-        <div className="bg-gradient-to-r from-[#0C1A3E] via-[#091533] to-[#0C1A3E] border border-white/10 rounded-2xl p-4 sm:p-5 shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-[#00D9FF]/10 to-transparent rounded-full blur-3xl pointer-events-none"></div>
+      {/* DESKTOP / LAPTOP LIVE SCORE BANNER */}
+      <div className="hidden sm:block bg-gradient-to-r from-[#183478] via-[#12275A] to-[#183478] border border-cyan-400/30 rounded-xl p-3 sm:p-4 shadow-[0_0_20px_rgba(6,182,212,0.15)] relative overflow-hidden">
+        {/* Top Light Beams */}
+        <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-cyan-400/20 to-transparent rounded-full blur-2xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-80 h-80 bg-gradient-to-tr from-blue-500/20 to-transparent rounded-full blur-2xl pointer-events-none"></div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6 items-center relative z-10">
-            {/* Mobile Layout (Flex row on small screens, 3-col on md+) */}
-            <div className="flex md:hidden items-center justify-between gap-2 bg-[#061026] p-3 rounded-xl border border-white/5">
-              {/* Team A Mobile */}
-              <div className="flex items-center gap-2 min-w-0">
-                <TeamIdentity team={match.teamA} size="sm" showFull={false} />
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{match.teamA?.shortName || match.teamA?.name}</div>
-                  {score?.teamAScore ? (
-                    <div className="font-mono text-sm font-black text-[#00E5A0]">{score.teamAScore}</div>
-                  ) : (
-                    <div className="text-[10px] text-slate-400">Yet to bat</div>
+        <div className="grid grid-cols-3 gap-4 items-center relative z-10">
+          {/* Desktop Team A */}
+          <div className="flex items-center justify-end gap-3 text-right">
+            <div className="space-y-0.5">
+              <div className="text-base sm:text-lg font-black text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)]">{match.teamA?.name}</div>
+              {score?.teamAScore ? (
+                <div className="font-mono text-xl sm:text-2xl font-black text-cyan-300 tracking-wider drop-shadow-[0_0_10px_rgba(6,182,212,0.6)]">
+                  {score.teamAScore}
+                  {score.teamAOvers && (
+                    <span className="text-xs text-slate-300 font-normal ml-1.5">({score.teamAOvers} ov)</span>
                   )}
                 </div>
-              </div>
-
-              {/* VS / Status Badge Mobile */}
-              <div className="text-center px-2 shrink-0">
-                <span className="text-[10px] font-black text-[#00D9FF] px-2 py-0.5 rounded-full bg-[#101F42] border border-white/10 uppercase">
-                  {match.status === 'LIVE' ? 'LIVE' : match.matchType || 'VS'}
-                </span>
-              </div>
-
-              {/* Team B Mobile */}
-              <div className="flex items-center gap-2 min-w-0 text-right justify-end">
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-white truncate">{match.teamB?.shortName || match.teamB?.name}</div>
-                  {score?.teamBScore ? (
-                    <div className="font-mono text-sm font-black text-[#00D9FF]">{score.teamBScore}</div>
-                  ) : (
-                    <div className="text-[10px] text-slate-400">Yet to bat</div>
-                  )}
-                </div>
-                <TeamIdentity team={match.teamB} size="sm" showFull={false} />
-              </div>
-            </div>
-
-            {/* Desktop Team A (Hidden on mobile) */}
-            <div className="hidden md:flex items-center justify-end gap-4 text-right">
-              <div className="space-y-1">
-                <div className="text-lg sm:text-xl font-extrabold text-white">{match.teamA?.name}</div>
-                {score?.teamAScore ? (
-                  <div className="font-mono text-2xl sm:text-3xl font-black text-[#00E5A0] tracking-wider">
-                    {score.teamAScore}
-                    {score.teamAOvers && (
-                      <span className="text-xs text-[#7183A8] font-normal ml-2">({score.teamAOvers} ov)</span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-[#7183A8]">Yet to bat</div>
-                )}
-              </div>
-              <TeamIdentity team={match.teamA} size="lg" showFull={false} />
-            </div>
-
-            {/* VS / Status text */}
-            <div className="flex flex-col items-center justify-center text-center space-y-1.5 bg-[#061026] py-3 px-4 rounded-xl border border-white/5">
-              <div className="text-[11px] sm:text-xs font-bold text-[#7183A8] uppercase tracking-widest">
-                {match.status === 'LIVE' ? 'LIVE INNINGS' : match.status}
-              </div>
-              {score?.statusText ? (
-                <div className="text-xs sm:text-sm font-bold text-amber-300 animate-pulse leading-snug">{score.statusText}</div>
-              ) : match.resultSummary ? (
-                <div className="text-xs sm:text-sm font-bold text-emerald-300 leading-snug">{match.resultSummary}</div>
               ) : (
-                <div className="text-xs text-[#7183A8]">Match starts soon</div>
-              )}
-              {score?.recentOvers && (
-                <div className="text-[11px] text-[#7183A8] font-mono flex items-center gap-1 mt-0.5">
-                  <span>Recent:</span>
-                  <span className="text-white font-bold bg-white/5 px-2 py-0.5 rounded">{score.recentOvers}</span>
-                </div>
+                <div className="text-xs text-slate-400">Yet to bat</div>
               )}
             </div>
+            <TeamIdentity team={match.teamA} size="md" showFull={false} />
+          </div>
 
-            {/* Desktop Team B (Hidden on mobile) */}
-            <div className="hidden md:flex items-center justify-start gap-4 text-left">
-              <TeamIdentity team={match.teamB} size="lg" showFull={false} />
-              <div className="space-y-1">
-                <div className="text-lg sm:text-xl font-extrabold text-white">{match.teamB?.name}</div>
-                {score?.teamBScore ? (
-                  <div className="font-mono text-2xl sm:text-3xl font-black text-[#00D9FF] tracking-wider">
-                    {score.teamBScore}
-                    {score.teamBOvers && (
-                      <span className="text-xs text-[#7183A8] font-normal ml-2">({score.teamBOvers} ov)</span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="text-xs text-[#7183A8]">Yet to bat</div>
-                )}
+          {/* Center Status Box */}
+          <div className="flex flex-col items-center justify-center text-center space-y-1 bg-[#061026]/90 py-2.5 px-3 rounded-xl border border-cyan-500/20 shadow-md">
+            <div className="text-[11px] font-black text-cyan-400 uppercase tracking-widest flex items-center gap-1.5">
+              {match.status === 'LIVE' && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.9)]"></span>}
+              {match.status === 'LIVE' ? 'LIVE INNINGS' : match.status}
+            </div>
+            {score?.statusText ? (
+              <div className="text-xs font-extrabold text-amber-300 animate-pulse leading-snug drop-shadow-[0_0_6px_rgba(252,211,77,0.4)]">{score.statusText}</div>
+            ) : match.resultSummary ? (
+              <div className="text-xs font-extrabold text-emerald-300 leading-snug drop-shadow-[0_0_6px_rgba(52,211,153,0.4)]">{match.resultSummary}</div>
+            ) : (
+              <div className="text-xs text-slate-400">Match starts soon</div>
+            )}
+            {score?.recentOvers && (
+              <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                <span className="text-cyan-300/80 font-bold">Recent:</span>
+                <span className="text-white font-black bg-cyan-500/20 border border-cyan-500/30 px-1.5 py-0.2 rounded shadow-sm">{score.recentOvers}</span>
               </div>
+            )}
+          </div>
+
+          {/* Desktop Team B */}
+          <div className="flex items-center justify-start gap-3 text-left">
+            <TeamIdentity team={match.teamB} size="md" showFull={false} />
+            <div className="space-y-0.5">
+              <div className="text-base sm:text-lg font-black text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.3)]">{match.teamB?.name}</div>
+              {score?.teamBScore ? (
+                <div className="font-mono text-xl sm:text-2xl font-black text-cyan-300 tracking-wider drop-shadow-[0_0_10px_rgba(6,182,212,0.6)]">
+                  {score.teamBScore}
+                  {score.teamBOvers && (
+                    <span className="text-xs text-slate-300 font-normal ml-1.5">({score.teamBOvers} ov)</span>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400">Yet to bat</div>
+              )}
             </div>
           </div>
         </div>

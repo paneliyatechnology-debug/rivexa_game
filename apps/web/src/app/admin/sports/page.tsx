@@ -148,12 +148,81 @@ export default function AdminSportsPage() {
     resultSummary: '',
   });
 
+  // Bet Settings state
+  const [betSettings, setBetSettings] = useState<{
+    minStake: number;
+    maxStake: number;
+    maxProfitCap: number;
+    bookmakerMargin: number;
+    autoSettle: boolean;
+    autoRefundVoid: boolean;
+    userCancelWindowSec: number;
+    oddEvenEnabled: boolean;
+    oddEvenDefaultOdds: number;
+    maxBetsPerUserPerMatch: number;
+    liveBetDelaySec: number;
+    betNotice: string;
+  }>({
+    minStake: 10,
+    maxStake: 50000,
+    maxProfitCap: 200000,
+    bookmakerMargin: 4.5,
+    autoSettle: true,
+    autoRefundVoid: true,
+    userCancelWindowSec: 10,
+    oddEvenEnabled: true,
+    oddEvenDefaultOdds: 1.90,
+    maxBetsPerUserPerMatch: 20,
+    liveBetDelaySec: 2,
+    betNotice: 'Bet responsibly. Odds fluctuate in real time during live sports matches.',
+  });
+  const [loadingBetSettings, setLoadingBetSettings] = useState<boolean>(false);
+  const [savingBetSettings, setSavingBetSettings] = useState<boolean>(false);
+
   const [activeTab, setActiveTab] = useState<
-    'matches' | 'bets' | 'markets' | 'categories' | 'competitions' | 'provider'
+    'matches' | 'bets' | 'markets' | 'categories' | 'competitions' | 'provider' | 'bet_settings'
   >('matches');
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  const fetchBetSettings = useCallback(async () => {
+    setLoadingBetSettings(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/bet-settings`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) setBetSettings(json.data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingBetSettings(false);
+    }
+  }, []);
+
+  const handleSaveBetSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingBetSettings(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/bet-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(betSettings),
+      });
+      const json = await res.json();
+      if (res.ok) {
+        setMessage('Bet settings saved & updated successfully!');
+        if (json.data) setBetSettings(json.data);
+      } else {
+        setMessage(`Failed to save bet settings: ${json.message || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setMessage(`Error saving bet settings: ${err.message}`);
+    } finally {
+      setSavingBetSettings(false);
+    }
+  };
 
   const fetchAdminData = useCallback(async () => {
     setLoading(true);
@@ -274,7 +343,8 @@ export default function AdminSportsPage() {
   useEffect(() => {
     if (activeTab === 'bets') fetchUserBets();
     if (activeTab === 'markets') fetchMarketSettings();
-  }, [activeTab, fetchUserBets, fetchMarketSettings]);
+    if (activeTab === 'bet_settings') fetchBetSettings();
+  }, [activeTab, fetchUserBets, fetchMarketSettings, fetchBetSettings]);
 
   const handleManualSync = async () => {
     setSyncing(true);
@@ -324,7 +394,7 @@ export default function AdminSportsPage() {
         setMessage('Provider capabilities re-detected & verified successfully');
         fetchAdminData();
       }
-    } catch (err) {}
+    } catch (err) { }
     setDetectingCapabilities(false);
   };
 
@@ -340,7 +410,7 @@ export default function AdminSportsPage() {
         setMessage('Provider settings saved successfully!');
         fetchAdminData();
       }
-    } catch (e) {}
+    } catch (e) { }
     setSavingConfig(false);
   };
 
@@ -398,7 +468,7 @@ export default function AdminSportsPage() {
         setMessage(`Bet ${betId} settled as ${status}`);
         fetchUserBets();
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const handleToggleMarketCategory = async (id: string, currentActive: boolean) => {
@@ -412,7 +482,7 @@ export default function AdminSportsPage() {
         setMessage('Market category updated');
         fetchMarketSettings();
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleToggleOddEven = async (enabled: boolean) => {
@@ -426,7 +496,7 @@ export default function AdminSportsPage() {
         setMessage(`Odd/Even markets ${enabled ? 'Enabled' : 'Disabled'}`);
         fetchMarketSettings();
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleToggleCategory = async (id: string, currentActive: boolean) => {
@@ -440,7 +510,7 @@ export default function AdminSportsPage() {
         setMessage('Category visibility updated successfully');
         fetchAdminData();
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const handleToggleAutoSync = async (enabled: boolean) => {
@@ -454,7 +524,7 @@ export default function AdminSportsPage() {
         setAutoSyncActive(enabled);
         setMessage(`Live 3rd-Party WebSocket feed ${enabled ? 'ENABLED (Auto ball updates every 4s)' : 'PAUSED'}`);
       }
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleTriggerInstantBall = async () => {
@@ -467,7 +537,7 @@ export default function AdminSportsPage() {
         setMessage('⚡ Instant live ball event generated & broadcasted via WebSockets!');
         fetchAdminData();
       }
-    } catch (e) {}
+    } catch (e) { }
     setTriggeringBall(false);
   };
 
@@ -482,7 +552,7 @@ export default function AdminSportsPage() {
         setMessage(`Match status updated to ${status}`);
         fetchAdminData();
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const handleOpenLiveControl = (m: any) => {
@@ -718,7 +788,7 @@ export default function AdminSportsPage() {
         setMessage('Sports database seeded successfully');
         fetchAdminData();
       }
-    } catch (err) {}
+    } catch (err) { }
   };
 
   const games = [
@@ -801,11 +871,10 @@ export default function AdminSportsPage() {
 
         {/* SIDEBAR NAVIGATION */}
         <aside
-          className={`w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-full transition-transform duration-200 z-50 ${
-            isMobileMenuOpen
+          className={`w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-full transition-transform duration-200 z-50 ${isMobileMenuOpen
               ? 'fixed inset-y-0 left-0 shadow-2xl translate-x-0 h-full z-50'
               : 'hidden md:flex'
-          }`}
+            }`}
         >
           <div className="p-3 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
             {/* MAIN SECTION */}
@@ -856,11 +925,10 @@ export default function AdminSportsPage() {
               <nav className="space-y-1">
                 <button
                   onClick={() => setActiveTab('matches')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                    activeTab === 'matches'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'matches'
                       ? 'bg-blue-50 text-blue-600 border border-blue-200'
                       : 'text-slate-600 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">🏆</span>
                   <span>Sports Live &amp; Matches</span>
@@ -868,11 +936,10 @@ export default function AdminSportsPage() {
 
                 <button
                   onClick={() => setActiveTab('bets')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                    activeTab === 'bets'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'bets'
                       ? 'bg-purple-50 text-purple-600 border border-purple-200'
                       : 'text-slate-600 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">🎟️</span>
                   <span>Userwise Bet History</span>
@@ -880,23 +947,32 @@ export default function AdminSportsPage() {
 
                 <button
                   onClick={() => setActiveTab('markets')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                    activeTab === 'markets'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'markets'
                       ? 'bg-teal-50 text-teal-600 border border-teal-200'
                       : 'text-slate-600 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">⚙️</span>
                   <span>Market &amp; Odd/Even Settings</span>
                 </button>
 
                 <button
+                  onClick={() => setActiveTab('bet_settings')}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'bet_settings'
+                      ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
+                      : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                >
+                  <span className="text-sm">🎛️</span>
+                  <span>Bet Settings</span>
+                </button>
+
+                <button
                   onClick={() => setActiveTab('provider')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${
-                    activeTab === 'provider'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'provider'
                       ? 'bg-amber-50 text-amber-600 border border-amber-200'
                       : 'text-slate-600 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <span className="text-sm">🔌</span>
                   <span>CricAPI Provider Engine</span>
@@ -1023,9 +1099,8 @@ export default function AdminSportsPage() {
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-extrabold text-sm text-white">Automated 3rd-Party WebSocket Stream</span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                    autoSyncActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300'
-                  }`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${autoSyncActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300'
+                    }`}>
                     {autoSyncActive ? '🟢 Live Auto-Sync Active (Every 4s)' : '🟡 Stream Paused'}
                   </span>
                 </div>
@@ -1047,11 +1122,10 @@ export default function AdminSportsPage() {
               <button
                 type="button"
                 onClick={() => handleToggleAutoSync(!autoSyncActive)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs ${
-                  autoSyncActive
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs ${autoSyncActive
                     ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
                     : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                }`}
+                  }`}
               >
                 {autoSyncActive ? 'Pause Auto-Stream' : 'Resume Auto-Stream'}
               </button>
@@ -1062,66 +1136,70 @@ export default function AdminSportsPage() {
           <div className="flex items-center gap-2 border-b border-slate-200 pb-3 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('matches')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                activeTab === 'matches'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${activeTab === 'matches'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               Matches &amp; Live Control ({matches.length})
             </button>
 
             <button
               onClick={() => setActiveTab('bets')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                activeTab === 'bets'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'bets'
                   ? 'bg-purple-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Ticket className="w-3.5 h-3.5" /> Userwise Bet History
             </button>
 
             <button
               onClick={() => setActiveTab('markets')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                activeTab === 'markets'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'markets'
                   ? 'bg-teal-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Sliders className="w-3.5 h-3.5" /> Market &amp; Odd/Even Settings
             </button>
 
             <button
+              onClick={() => setActiveTab('bet_settings')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'bet_settings'
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                }`}
+            >
+              <Sliders className="w-3.5 h-3.5" /> Bet Settings
+            </button>
+
+            <button
               onClick={() => setActiveTab('categories')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                activeTab === 'categories'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${activeTab === 'categories'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               Sports Categories ({categories.length})
             </button>
 
             <button
               onClick={() => setActiveTab('competitions')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${
-                activeTab === 'competitions'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 ${activeTab === 'competitions'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               Competitions ({competitions.length})
             </button>
 
             <button
               onClick={() => setActiveTab('provider')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                activeTab === 'provider'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'provider'
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-              }`}
+                }`}
             >
               <Activity className="w-3.5 h-3.5" /> Provider Engine Config
             </button>
@@ -1173,13 +1251,12 @@ export default function AdminSportsPage() {
                         </td>
                         <td className="py-3.5 px-4">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1 w-max ${
-                              m.status === 'LIVE'
+                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1 w-max ${m.status === 'LIVE'
                                 ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                                 : m.status === 'UPCOMING'
-                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                : 'bg-slate-100 text-slate-700 border border-slate-200'
-                            }`}
+                                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}
                           >
                             {m.status === 'LIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                             {m.status}
@@ -1202,25 +1279,22 @@ export default function AdminSportsPage() {
                           </button>
                           <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'LIVE')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                              m.status === 'LIVE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                            }`}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'LIVE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                              }`}
                           >
                             Set LIVE
                           </button>
                           <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'UPCOMING')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                              m.status === 'UPCOMING' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                            }`}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'UPCOMING' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                              }`}
                           >
                             Set UPCOMING
                           </button>
                           <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'COMPLETED')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
-                              m.status === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
-                            }`}
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                              }`}
                           >
                             Set COMPLETED
                           </button>
@@ -1328,13 +1402,12 @@ export default function AdminSportsPage() {
                             <td className="py-3.5 px-4 font-mono text-emerald-600 font-bold">₹{Number(b.potentialReturn).toFixed(2)}</td>
                             <td className="py-3.5 px-4">
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  b.status === 'WON'
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${b.status === 'WON'
                                     ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                                     : b.status === 'LOST'
-                                    ? 'bg-red-100 text-red-700 border border-red-200'
-                                    : 'bg-blue-100 text-blue-700'
-                                }`}
+                                      ? 'bg-red-100 text-red-700 border border-red-200'
+                                      : 'bg-blue-100 text-blue-700'
+                                  }`}
                               >
                                 {b.status}
                               </span>
@@ -1400,9 +1473,8 @@ export default function AdminSportsPage() {
                     <span className="text-xs font-bold text-slate-700">Status:</span>
                     <button
                       onClick={() => handleToggleOddEven(!oddEvenSettings?.enabled)}
-                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${
-                        oddEvenSettings?.enabled ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
-                      }`}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs ${oddEvenSettings?.enabled ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                        }`}
                     >
                       {oddEvenSettings?.enabled ? 'ENABLED' : 'DISABLED'}
                     </button>
@@ -1684,11 +1756,10 @@ export default function AdminSportsPage() {
               {/* Connection Test Feedback */}
               {connectionResult && (
                 <div
-                  className={`p-4 rounded-2xl border text-xs flex items-center justify-between ${
-                    connectionResult.success
+                  className={`p-4 rounded-2xl border text-xs flex items-center justify-between ${connectionResult.success
                       ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                       : 'bg-red-50 border-red-200 text-red-800'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2 font-medium">
                     {connectionResult.success ? <Check className="w-4 h-4 text-emerald-600" /> : <X className="w-4 h-4 text-red-600" />}
@@ -1718,11 +1789,10 @@ export default function AdminSportsPage() {
                     Object.entries(providerStatus.capabilities).map(([key, cap]: [string, any]) => (
                       <div
                         key={key}
-                        className={`p-3.5 rounded-xl border ${
-                          cap.supported
+                        className={`p-3.5 rounded-xl border ${cap.supported
                             ? 'bg-emerald-50 border-emerald-200'
                             : 'bg-slate-50 border-slate-200'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-bold text-slate-800 capitalize">
@@ -1765,11 +1835,10 @@ export default function AdminSportsPage() {
                             <td className="py-2.5 px-3 text-slate-800 font-bold">{log.endpoint}</td>
                             <td className="py-2.5 px-3">
                               <span
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                  log.status === 'SUCCESS'
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.status === 'SUCCESS'
                                     ? 'bg-emerald-100 text-emerald-700'
                                     : 'bg-red-100 text-red-700'
-                                }`}
+                                  }`}
                               >
                                 {log.status}
                               </span>
@@ -1792,6 +1861,299 @@ export default function AdminSportsPage() {
                   </table>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 7. BET SETTINGS CONTROL PANEL TAB */}
+          {activeTab === 'bet_settings' && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-indigo-600" />
+                    <h2 className="font-bold text-slate-900 text-lg">Sports &amp; Bet Settings Control Engine</h2>
+                  </div>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Configure stake limits, maximum profit caps, margin percentage, auto-settlement, and sports betting parameters.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchBetSettings}
+                    disabled={loadingBetSettings}
+                    className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingBetSettings ? 'animate-spin' : ''}`} /> Refresh Settings
+                  </button>
+                  <button
+                    type="submit"
+                    form="bet-settings-form"
+                    disabled={savingBetSettings}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" /> {savingBetSettings ? 'Saving Changes...' : 'Save Bet Settings'}
+                  </button>
+                </div>
+              </div>
+
+              <form id="bet-settings-form" onSubmit={handleSaveBetSettings} className="space-y-6">
+                {/* CARD 1: STAKE & PROFIT LIMITS */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                    <span className="text-base">💰</span>
+                    <h3 className="font-bold text-slate-900 text-sm">Betting Stake &amp; Profit Risk Limits</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div> 
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Minimum Stake per Bet (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={betSettings.minStake}
+                        onChange={(e) => setBetSettings({ ...betSettings, minStake: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Minimum stake allowed on any sports slip</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Maximum Stake per Bet (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="10"
+                        step="100"
+                        value={betSettings.maxStake}
+                        onChange={(e) => setBetSettings({ ...betSettings, maxStake: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Maximum single ticket stake ceiling</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Max Winning Profit Cap per Bet (₹)
+                      </label>
+                      <input
+                        type="number"
+                        min="1000"
+                        step="1000"
+                        value={betSettings.maxProfitCap}
+                        onChange={(e) => setBetSettings({ ...betSettings, maxProfitCap: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Limit potential return payout on high odds</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Bookmaker Profit Margin (%)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="20"
+                        step="0.1"
+                        value={betSettings.bookmakerMargin}
+                        onChange={(e) => setBetSettings({ ...betSettings, bookmakerMargin: parseFloat(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Default overround calculated into live odds</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Max Open Bets per Match / User
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={betSettings.maxBetsPerUserPerMatch}
+                        onChange={(e) => setBetSettings({ ...betSettings, maxBetsPerUserPerMatch: parseInt(e.target.value) || 1 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Prevents bet spamming on a single match</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Live In-Play Bet Delay (Seconds)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="10"
+                        value={betSettings.liveBetDelaySec}
+                        onChange={(e) => setBetSettings({ ...betSettings, liveBetDelaySec: parseInt(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Court-siding protection delay before acceptance</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: AUTOMATION & SETTLEMENT ENGINE */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                    <span className="text-base">⚡</span>
+                    <h3 className="font-bold text-slate-900 text-sm">Betting Engine Automation &amp; Settlement</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">Auto-Settle Winning Bets</span>
+                        <span className="text-[10px] text-slate-500 block">Credit user wallet automatically on match end</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={betSettings.autoSettle}
+                        onChange={(e) => setBetSettings({ ...betSettings, autoSettle: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">Auto-Refund Void / Cancelled</span>
+                        <span className="text-[10px] text-slate-500 block">Return stake instantly on abandoned markets</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={betSettings.autoRefundVoid}
+                        onChange={(e) => setBetSettings({ ...betSettings, autoRefundVoid: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        User Bet Cancellation Window (Sec)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="60"
+                        value={betSettings.userCancelWindowSec}
+                        onChange={(e) => setBetSettings({ ...betSettings, userCancelWindowSec: parseInt(e.target.value) || 0 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Time allowed for user to cashout / cancel after placement</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 3: ODD / EVEN MARKET RULES */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                    <span className="text-base">🎲</span>
+                    <h3 className="font-bold text-slate-900 text-sm">Odd/Even Market Specific Controls</h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-xl">
+                      <div>
+                        <span className="text-xs font-bold text-slate-900 block">Enable Odd/Even Betting Markets</span>
+                        <span className="text-[10px] text-slate-500 block">Allow users to place bets on odd/even ball/over outcomes</span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={betSettings.oddEvenEnabled}
+                        onChange={(e) => setBetSettings({ ...betSettings, oddEvenEnabled: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 rounded cursor-pointer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">
+                        Default Odd/Even Back Odds
+                      </label>
+                      <input
+                        type="number"
+                        min="1.01"
+                        max="10.0"
+                        step="0.01"
+                        value={betSettings.oddEvenDefaultOdds}
+                        onChange={(e) => setBetSettings({ ...betSettings, oddEvenDefaultOdds: parseFloat(e.target.value) || 1.90 })}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-indigo-600"
+                        required
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">Default return multiplier for odd/even market selections</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 4: NOTICE BANNER & DISCLAIMER */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+                    <span className="text-base">📢</span>
+                    <h3 className="font-bold text-slate-900 text-sm">Bet Slip Notice Banner for Players</h3>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Global Bet Disclaimer Notice
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={betSettings.betNotice}
+                      onChange={(e) => setBetSettings({ ...betSettings, betNotice: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:border-indigo-600"
+                      placeholder="Notice shown at the bottom of player bet slips..."
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">Displayed in user's Bet Slip dialog when placing live bets.</p>
+                  </div>
+                </div>
+
+                {/* ACTION BAR */}
+                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBetSettings({
+                        minStake: 10,
+                        maxStake: 50000,
+                        maxProfitCap: 200000,
+                        bookmakerMargin: 4.5,
+                        autoSettle: true,
+                        autoRefundVoid: true,
+                        userCancelWindowSec: 10,
+                        oddEvenEnabled: true,
+                        oddEvenDefaultOdds: 1.90,
+                        maxBetsPerUserPerMatch: 20,
+                        liveBetDelaySec: 2,
+                        betNotice: 'Bet responsibly. Odds fluctuate in real time during live sports matches.',
+                      });
+                      setMessage('Bet settings reset to production defaults. Click Save to apply.');
+                    }}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                  >
+                    Reset Defaults
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingBetSettings}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold rounded-xl transition-all flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+                  >
+                    <CheckCircle className="w-4 h-4" /> {savingBetSettings ? 'Saving Settings...' : 'Save Bet Settings'}
+                  </button>
+                </div>
+              </form>
             </div>
           )}
         </main>

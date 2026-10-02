@@ -159,12 +159,19 @@ export default function CricketMatchDetailPage({
 
   // Handle WebSocket score updates in real-time without reloading
   useEffect(() => {
-    if (!liveUpdate || liveUpdate.matchId !== matchId) return;
+    if (!liveUpdate) return;
+    const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
+    if (targetMatchId && targetMatchId !== matchId) return;
+
+    const newScore = liveUpdate.score || liveUpdate;
     setMatch((prev: IMatch | null) => {
       if (!prev) return prev;
       return {
         ...prev,
-        score: liveUpdate.score || prev.score,
+        score: {
+          ...prev.score,
+          ...newScore,
+        },
       };
     });
   }, [liveUpdate, matchId]);

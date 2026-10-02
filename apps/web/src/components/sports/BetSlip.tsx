@@ -255,7 +255,7 @@ export function BetSlip({
 
           {/* Footer Calculation & Place Bet Button */}
           {items.length > 0 && (
-            <div className="p-3.5 bg-[#07112A] border-t border-white/10 space-y-3">
+            <div className="p-3.5 pb-24 lg:pb-3.5 bg-[#07112A] border-t border-white/10 space-y-3 shrink-0">
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between text-slate-400">
                   <span>Total Stake:</span>
@@ -276,7 +276,7 @@ export function BetSlip({
               <button
                 disabled={isSubmitting || totalStake <= 0}
                 onClick={handlePlaceTestBet}
-                className="w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-xl flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
               >
                 <Sparkles className="w-4 h-4" />
                 {isSubmitting ? 'Placing Test Bet...' : 'Place Test Bet (Virtual)'}
@@ -399,6 +399,13 @@ export function BetSlip({
     </div>
   );
 
+  // Auto-open mobile bet slip when items are added
+  useEffect(() => {
+    if (items.length > 0 && typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setIsOpenMobile(true);
+    }
+  }, [items.length]);
+
   return (
     <>
       {/* Desktop Sticky Sidebar Panel */}
@@ -410,17 +417,26 @@ export function BetSlip({
       {!isOpenMobile && (
         <button
           onClick={() => setIsOpenMobile(true)}
-          className="lg:hidden fixed bottom-20 right-4 z-40 px-4 py-3 bg-gradient-to-r from-[#287BFF] to-[#00D9FF] text-white text-xs font-black rounded-full shadow-2xl flex items-center gap-2 cursor-pointer animate-bounce"
+          className="lg:hidden fixed bottom-[76px] right-4 z-40 px-4 py-3 bg-gradient-to-r from-[#287BFF] to-[#00D9FF] text-white text-xs font-black rounded-full shadow-2xl flex items-center gap-2 cursor-pointer animate-bounce border border-white/20 active:scale-95 transition-transform"
         >
           <Ticket className="w-4 h-4" />
-          Bet Slip ({items.length})
+          <span>Bet Slip</span>
+          {items.length > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-[#00E5A0] text-slate-950 font-black text-[10px]">
+              {items.length}
+            </span>
+          )}
         </button>
       )}
 
       {/* Mobile Slide-over Drawer Modal */}
       {isOpenMobile && (
-        <div className="lg:hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-          <div className="w-full sm:max-w-md h-[85vh] sm:h-[650px]">{Content}</div>
+        <div className="lg:hidden fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-end justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="w-full sm:max-w-md h-[88vh] sm:h-[650px] max-h-[90vh] rounded-t-3xl sm:rounded-2xl overflow-hidden shadow-2xl flex flex-col bg-[#050C20] border-t sm:border border-white/10">
+            {/* Mobile Pull Indicator */}
+            <div className="w-12 h-1.5 bg-white/20 rounded-full mx-auto my-2 shrink-0 sm:hidden" />
+            {Content}
+          </div>
         </div>
       )}
     </>

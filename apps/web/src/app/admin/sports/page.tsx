@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getApiBaseUrl } from '@/lib/config';
+import { useSportsSocket } from '@/hooks/useSportsSocket';
 import {
   Trophy,
   RefreshCw,
@@ -27,6 +28,10 @@ import {
   ChevronRight,
   Menu,
   Bell,
+  Zap,
+  Edit3,
+  Clock,
+  Sparkles,
 } from 'lucide-react';
 
 export default function AdminSportsPage() {
@@ -84,6 +89,64 @@ export default function AdminSportsPage() {
   const [testingConnection, setTestingConnection] = useState<boolean>(false);
   const [connectionResult, setConnectionResult] = useState<any>(null);
   const [detectingCapabilities, setDetectingCapabilities] = useState<boolean>(false);
+  const [autoSyncActive, setAutoSyncActive] = useState<boolean>(true);
+  const [triggeringBall, setTriggeringBall] = useState<boolean>(false);
+
+  // Add Match Modal State
+  const [showAddMatchModal, setShowAddMatchModal] = useState<boolean>(false);
+  const [submittingMatch, setSubmittingMatch] = useState<boolean>(false);
+  const [addMatchForm, setAddMatchForm] = useState({
+    sportSlug: 'cricket',
+    competitionId: '',
+    competitionName: 'International T20 Trophy',
+    teamAName: '',
+    teamAShort: '',
+    teamBName: '',
+    teamBShort: '',
+    matchType: 'T20',
+    venue: 'Wankhede Stadium, Mumbai',
+    startTime: new Date().toISOString().slice(0, 16),
+    status: 'LIVE',
+    teamAScore: '0/0',
+    teamBScore: 'N/A',
+    teamAOvers: '0.0',
+    teamBOvers: '0.0',
+    statusText: 'Match in progress',
+  });
+
+  // Live Control Modal State
+  const [showLiveControlModal, setShowLiveControlModal] = useState<boolean>(false);
+  const [selectedMatch, setSelectedMatch] = useState<any>(null);
+  const [updatingLiveScore, setUpdatingLiveScore] = useState<boolean>(false);
+  const [liveScoreForm, setLiveScoreForm] = useState({
+    teamAScore: '',
+    teamBScore: '',
+    teamAOvers: '',
+    teamBOvers: '',
+    currentInnings: 1,
+    statusText: '',
+    activeBatsman: '',
+    activeBowler: '',
+    recentOvers: '',
+    resultSummary: '',
+    status: 'LIVE',
+    winner: 'teamA',
+  });
+
+  // Edit Match Details Modal State
+  const [showEditMatchModal, setShowEditMatchModal] = useState<boolean>(false);
+  const [editMatchForm, setEditMatchForm] = useState({
+    id: '',
+    teamAName: '',
+    teamAShort: '',
+    teamBName: '',
+    teamBShort: '',
+    matchType: 'T20',
+    venue: '',
+    startTime: '',
+    status: 'UPCOMING',
+    resultSummary: '',
+  });
 
   const [activeTab, setActiveTab] = useState<
     'matches' | 'bets' | 'markets' | 'categories' | 'competitions' | 'provider'
@@ -157,6 +220,52 @@ export default function AdminSportsPage() {
       console.error(e);
     }
   }, []);
+
+  // Real-time WebSockets Hook for Admin Control Panel
+  const { isConnected: isSocketConnected, liveUpdate: adminLiveUpdate, matchCompletedEvent: adminMatchCompleted } = useSportsSocket();
+
+  // Listen to live score updates from backend WebSocket & update table matches list
+  useEffect(() => {
+    if (!adminLiveUpdate) return;
+    const targetMatchId = adminLiveUpdate.matchId || adminLiveUpdate.score?.matchId;
+    const newScore = adminLiveUpdate.score || adminLiveUpdate;
+
+    if (!targetMatchId) return;
+
+    setMatches((prevMatches) =>
+      prevMatches.map((m) => {
+        if (m.id === targetMatchId) {
+          return {
+            ...m,
+            score: {
+              ...m.score,
+              ...newScore,
+            },
+          };
+        }
+        return m;
+      })
+    );
+  }, [adminLiveUpdate]);
+
+  useEffect(() => {
+    if (!adminMatchCompleted) return;
+    const targetMatchId = adminMatchCompleted.matchId || adminMatchCompleted.match?.id;
+    if (!targetMatchId) return;
+
+    setMatches((prevMatches) =>
+      prevMatches.map((m) => {
+        if (m.id === targetMatchId) {
+          return {
+            ...m,
+            status: 'COMPLETED',
+            resultSummary: adminMatchCompleted.match?.resultSummary || m.resultSummary,
+          };
+        }
+        return m;
+      })
+    );
+  }, [adminMatchCompleted]);
 
   useEffect(() => {
     fetchAdminData();
@@ -334,6 +443,34 @@ export default function AdminSportsPage() {
     } catch (err) {}
   };
 
+  const handleToggleAutoSync = async (enabled: boolean) => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/provider/auto-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      if (res.ok) {
+        setAutoSyncActive(enabled);
+        setMessage(`Live 3rd-Party WebSocket feed ${enabled ? 'ENABLED (Auto ball updates every 4s)' : 'PAUSED'}`);
+      }
+    } catch (e) {}
+  };
+
+  const handleTriggerInstantBall = async () => {
+    setTriggeringBall(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/provider/trigger-ball`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setMessage('⚡ Instant live ball event generated & broadcasted via WebSockets!');
+        fetchAdminData();
+      }
+    } catch (e) {}
+    setTriggeringBall(false);
+  };
+
   const handleUpdateMatchStatus = async (id: string, status: string) => {
     try {
       const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${id}/status`, {
@@ -346,6 +483,230 @@ export default function AdminSportsPage() {
         fetchAdminData();
       }
     } catch (err) {}
+  };
+
+  const handleOpenLiveControl = (m: any) => {
+    setSelectedMatch(m);
+    setLiveScoreForm({
+      teamAScore: m.score?.teamAScore || '0/0',
+      teamBScore: m.score?.teamBScore || 'N/A',
+      teamAOvers: m.score?.teamAOvers || '0.0',
+      teamBOvers: m.score?.teamBOvers || '0.0',
+      currentInnings: m.score?.currentInnings || 1,
+      statusText: m.score?.statusText || m.resultSummary || '',
+      activeBatsman: m.score?.activeBatsman || '',
+      activeBowler: m.score?.activeBowler || '',
+      recentOvers: m.score?.recentOvers || '',
+      resultSummary: m.resultSummary || '',
+      status: m.status || 'LIVE',
+      winner: m.teamAId || 'teamA',
+    });
+    setShowLiveControlModal(true);
+  };
+
+  const handleOpenEditMatch = (m: any) => {
+    setEditMatchForm({
+      id: m.id,
+      teamAName: m.teamA?.name || '',
+      teamAShort: m.teamA?.shortName || '',
+      teamBName: m.teamB?.name || '',
+      teamBShort: m.teamB?.shortName || '',
+      matchType: m.matchType || 'T20',
+      venue: m.venue || '',
+      startTime: m.startTime ? new Date(m.startTime).toISOString().slice(0, 16) : '',
+      status: m.status || 'UPCOMING',
+      resultSummary: m.resultSummary || '',
+    });
+    setShowEditMatchModal(true);
+  };
+
+  const handleCreateMatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addMatchForm.teamAName || !addMatchForm.teamBName) {
+      setMessage('Please enter Team A and Team B names');
+      return;
+    }
+    setSubmittingMatch(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(addMatchForm),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setMessage(`Match "${addMatchForm.teamAName} vs ${addMatchForm.teamBName}" created successfully!`);
+        setShowAddMatchModal(false);
+        setAddMatchForm({
+          sportSlug: 'cricket',
+          competitionId: '',
+          competitionName: 'International T20 Trophy',
+          teamAName: '',
+          teamAShort: '',
+          teamBName: '',
+          teamBShort: '',
+          matchType: 'T20',
+          venue: 'Wankhede Stadium, Mumbai',
+          startTime: new Date().toISOString().slice(0, 16),
+          status: 'LIVE',
+          teamAScore: '0/0',
+          teamBScore: 'N/A',
+          teamAOvers: '0.0',
+          teamBOvers: '0.0',
+          statusText: 'Match in progress',
+        });
+        fetchAdminData();
+      } else {
+        setMessage(`Failed to create match: ${json.message || 'Unknown error'}`);
+      }
+    } catch (err: any) {
+      setMessage(`Error creating match: ${err.message || String(err)}`);
+    } finally {
+      setSubmittingMatch(false);
+    }
+  };
+
+  const handleSaveLiveScore = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedMatch) return;
+    setUpdatingLiveScore(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${selectedMatch.id}/score`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(liveScoreForm),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setMessage(`Live match score updated & broadcasted successfully!`);
+        fetchAdminData();
+      } else {
+        setMessage(`Score update failed: ${json.message}`);
+      }
+    } catch (err: any) {
+      setMessage(`Error updating score: ${err.message}`);
+    } finally {
+      setUpdatingLiveScore(false);
+    }
+  };
+
+  const handleDeclareWinner = async (winnerSelection: 'teamA' | 'teamB' | 'draw') => {
+    if (!selectedMatch) return;
+    try {
+      const winnerName = winnerSelection === 'teamA' ? selectedMatch.teamA?.name : selectedMatch.teamB?.name;
+      const defaultSummary = winnerSelection === 'draw' ? 'Match Draw / Tie' : `${winnerName} won the match!`;
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${selectedMatch.id}/declare-result`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          winner: winnerSelection,
+          resultSummary: liveScoreForm.resultSummary || defaultSummary,
+        }),
+      });
+      if (res.ok) {
+        setMessage(`Result declared: ${defaultSummary}`);
+        setShowLiveControlModal(false);
+        fetchAdminData();
+      }
+    } catch (err: any) {
+      setMessage(`Error declaring result: ${err.message}`);
+    }
+  };
+
+  const handleEditMatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${editMatchForm.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editMatchForm),
+      });
+      if (res.ok) {
+        setMessage('Match updated successfully');
+        setShowEditMatchModal(false);
+        fetchAdminData();
+      }
+    } catch (e: any) {
+      setMessage(`Edit error: ${e.message}`);
+    }
+  };
+
+  const handleDeleteMatch = async (matchId: string) => {
+    if (!confirm('Are you sure you want to delete this match?')) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${matchId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setMessage('Match deleted successfully');
+        fetchAdminData();
+      }
+    } catch (e: any) {
+      setMessage(`Delete error: ${e.message}`);
+    }
+  };
+
+  const handleQuickBallAction = async (type: '1' | '2' | '3' | '4' | '6' | 'W' | 'DOT' | 'WD' | 'NB') => {
+    if (!selectedMatch) return;
+
+    const isInnings1 = (liveScoreForm.currentInnings || 1) === 1;
+    const currentScoreStr = isInnings1 ? (liveScoreForm.teamAScore || '0/0') : (liveScoreForm.teamBScore || '0/0');
+    const currentOversStr = isInnings1 ? (liveScoreForm.teamAOvers || '0.0') : (liveScoreForm.teamBOvers || '0.0');
+
+    // Parse runs and wickets
+    const parts = currentScoreStr.split('/');
+    let runs = parseInt(parts[0]) || 0;
+    let wickets = parseInt(parts[1]) || 0;
+
+    // Parse overs
+    const overParts = currentOversStr.split('.');
+    let wholeOvers = parseInt(overParts[0]) || 0;
+    let balls = parseInt(overParts[1]) || 0;
+
+    let recent = liveScoreForm.recentOvers ? liveScoreForm.recentOvers.split(' ').filter(Boolean) : [];
+
+    if (type === '1') { runs += 1; balls += 1; recent.push('1'); }
+    else if (type === '2') { runs += 2; balls += 1; recent.push('2'); }
+    else if (type === '3') { runs += 3; balls += 1; recent.push('3'); }
+    else if (type === '4') { runs += 4; balls += 1; recent.push('4'); }
+    else if (type === '6') { runs += 6; balls += 1; recent.push('6'); }
+    else if (type === 'W') { wickets += 1; balls += 1; recent.push('W'); }
+    else if (type === 'DOT') { balls += 1; recent.push('•'); }
+    else if (type === 'WD') { runs += 1; recent.push('WD'); }
+    else if (type === 'NB') { runs += 1; recent.push('NB'); }
+
+    if (balls >= 6) {
+      wholeOvers += 1;
+      balls = 0;
+    }
+
+    if (recent.length > 6) recent = recent.slice(-6);
+
+    const newScoreStr = `${runs}/${wickets}`;
+    const newOversStr = `${wholeOvers}.${balls}`;
+    const recentOversStr = recent.join(' ');
+
+    const updatedForm = {
+      ...liveScoreForm,
+      ...(isInnings1 ? { teamAScore: newScoreStr, teamAOvers: newOversStr } : { teamBScore: newScoreStr, teamBOvers: newOversStr }),
+      recentOvers: recentOversStr,
+    };
+
+    setLiveScoreForm(updatedForm);
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/admin/sports/matches/${selectedMatch.id}/score`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedForm),
+      });
+      if (res.ok) {
+        setMessage(`Ball updated: ${type === 'DOT' ? 'Dot' : type}! Score: ${newScoreStr} (${newOversStr} ov)`);
+        fetchAdminData();
+      }
+    } catch (err: any) {
+      console.error('Failed to update ball:', err);
+    }
   };
 
   const handleTriggerSeed = async () => {
@@ -638,10 +999,10 @@ export default function AdminSportsPage() {
 
             <div className="flex items-center gap-3">
               <button
-                onClick={handleTriggerSeed}
-                className="px-3.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowAddMatchModal(true)}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
-                <RefreshCw className="w-3.5 h-3.5" /> Seed / Reset Mock Matches
+                <Plus className="w-3.5 h-3.5" /> Add New Match
               </button>
               <Link
                 href="/sports"
@@ -650,6 +1011,50 @@ export default function AdminSportsPage() {
               >
                 View Live Frontend <ExternalLink className="w-3.5 h-3.5" />
               </Link>
+            </div>
+          </div>
+
+          {/* AUTOMATED 3RD-PARTY LIVE WEBSOCKET PROVIDER BANNER */}
+          <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-4 rounded-2xl border border-blue-500/20 shadow-md flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-400/30 flex items-center justify-center shrink-0">
+                <Radio className={`w-5 h-5 ${autoSyncActive ? 'text-emerald-400 animate-pulse' : 'text-slate-400'}`} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-extrabold text-sm text-white">Automated 3rd-Party WebSocket Stream</span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                    autoSyncActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    {autoSyncActive ? '🟢 Live Auto-Sync Active (Every 4s)' : '🟡 Stream Paused'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 font-medium">
+                  Live scores &amp; ball-by-ball commentary update automatically via 3rd-party WebSocket feed. Admin does not need to enter balls manually!
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerInstantBall}
+                disabled={triggeringBall}
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300" /> {triggeringBall ? 'Simulating Ball...' : 'Trigger Instant Ball'}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleAutoSync(!autoSyncActive)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs ${
+                  autoSyncActive
+                    ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                {autoSyncActive ? 'Pause Auto-Stream' : 'Resume Auto-Stream'}
+              </button>
             </div>
           </div>
 
@@ -725,9 +1130,17 @@ export default function AdminSportsPage() {
           {/* 1. MATCHES & LIVE CONTROL TAB */}
           {activeTab === 'matches' && (
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <h2 className="font-bold text-slate-900 text-base">Match Directory &amp; Live Status Controls</h2>
-                <span className="text-xs text-slate-500 font-medium">Click quick status buttons to switch live/upcoming state.</span>
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div>
+                  <h2 className="font-bold text-slate-900 text-base">Match Directory &amp; Live Status Controls</h2>
+                  <p className="text-xs text-slate-500 font-medium">Create matches, manage live scores in real-time, and declare winner results.</p>
+                </div>
+                <button
+                  onClick={() => setShowAddMatchModal(true)}
+                  className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add New Match
+                </button>
               </div>
 
               <div className="overflow-x-auto">
@@ -738,48 +1151,85 @@ export default function AdminSportsPage() {
                       <th className="py-3 px-4">Competition</th>
                       <th className="py-3 px-4">Score Snapshot</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Quick Status Control</th>
+                      <th className="py-3 px-4 text-right">Quick &amp; Live Controls</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {matches.map((m) => (
                       <tr key={m.id} className="hover:bg-slate-50">
                         <td className="py-3.5 px-4 font-bold text-slate-900">
-                          {m.teamA?.name} vs {m.teamB?.name}
+                          <div className="flex items-center gap-2">
+                            <span>{m.teamA?.name} vs {m.teamB?.name}</span>
+                            {m.matchType && (
+                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono">
+                                {m.matchType}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">{m.competition?.name}</td>
                         <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
-                          {m.score?.teamAScore || '0/0'} / {m.score?.teamBScore || 'N/A'}
+                          {m.score?.teamAScore || '0/0'} ({m.score?.teamAOvers || '0.0'}) / {m.score?.teamBScore || 'N/A'} ({m.score?.teamBOvers || '0.0'})
                         </td>
                         <td className="py-3.5 px-4">
                           <span
-                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
+                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1 w-max ${
                               m.status === 'LIVE'
                                 ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : 'bg-blue-100 text-blue-700'
+                                : m.status === 'UPCOMING'
+                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                : 'bg-slate-100 text-slate-700 border border-slate-200'
                             }`}
                           >
+                            {m.status === 'LIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
                             {m.status}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 text-right space-x-1.5">
                           <button
+                            onClick={() => handleOpenLiveControl(m)}
+                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs inline-flex items-center gap-1"
+                            title="Manage Live Match Scores & Declare Winner"
+                          >
+                            <Zap className="w-3 h-3" /> Manage Live
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditMatch(m)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer transition-colors border border-slate-300 inline-flex items-center gap-1"
+                            title="Edit Match Details"
+                          >
+                            <Edit3 className="w-3 h-3" /> Edit
+                          </button>
+                          <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'LIVE')}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              m.status === 'LIVE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                            }`}
                           >
                             Set LIVE
                           </button>
                           <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'UPCOMING')}
-                            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              m.status === 'UPCOMING' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                            }`}
                           >
                             Set UPCOMING
                           </button>
                           <button
                             onClick={() => handleUpdateMatchStatus(m.id, 'COMPLETED')}
-                            className="px-2.5 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs"
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                              m.status === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                            }`}
                           >
                             Set COMPLETED
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMatch(m.id)}
+                            className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors inline-block align-middle"
+                            title="Delete Match"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </td>
                       </tr>
@@ -1465,6 +1915,539 @@ export default function AdminSportsPage() {
                   className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs disabled:opacity-50"
                 >
                   {creatingMarket ? 'Creating...' : 'Create Question Bet'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 1. CREATE NEW MATCH MODAL */}
+      {showAddMatchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-600" /> Add New Sports Match
+              </h3>
+              <button onClick={() => setShowAddMatchModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateMatchSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Sport Category:</label>
+                  <select
+                    value={addMatchForm.sportSlug}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, sportSlug: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                  >
+                    <option value="cricket">🏏 Cricket</option>
+                    <option value="football">⚽ Football</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Match Format / Type:</label>
+                  <select
+                    value={addMatchForm.matchType}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, matchType: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                  >
+                    <option value="T20">T20 (20 Overs)</option>
+                    <option value="ODI">ODI (50 Overs)</option>
+                    <option value="TEST">Test Match</option>
+                    <option value="FOOTBALL">Football (90 Min)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Competition / Tournament Name:</label>
+                <input
+                  type="text"
+                  placeholder="e.g. International T20 Trophy / T20 Premier League 2026"
+                  value={addMatchForm.competitionName}
+                  onChange={(e) => setAddMatchForm({ ...addMatchForm, competitionName: e.target.value })}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div>
+                  <label className="font-bold text-blue-700 block mb-1">Team A (Home):</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. India"
+                    value={addMatchForm.teamAName}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, teamAName: e.target.value })}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 mb-1.5 focus:outline-none"
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="Short Code (e.g. IND)"
+                    value={addMatchForm.teamAShort}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, teamAShort: e.target.value })}
+                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs uppercase font-mono text-slate-700 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-emerald-700 block mb-1">Team B (Away):</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Australia"
+                    value={addMatchForm.teamBName}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, teamBName: e.target.value })}
+                    className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900 mb-1.5 focus:outline-none"
+                    required
+                  />
+                  <input
+                    type="text"
+                    placeholder="Short Code (e.g. AUS)"
+                    value={addMatchForm.teamBShort}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, teamBShort: e.target.value })}
+                    className="w-full p-1.5 bg-white border border-slate-300 rounded-lg text-xs uppercase font-mono text-slate-700 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Venue / Stadium:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Wankhede Stadium, Mumbai"
+                    value={addMatchForm.venue}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, venue: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Initial Match Status:</label>
+                  <select
+                    value={addMatchForm.status}
+                    onChange={(e) => setAddMatchForm({ ...addMatchForm, status: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                  >
+                    <option value="LIVE">🟢 LIVE NOW</option>
+                    <option value="UPCOMING">📅 UPCOMING</option>
+                  </select>
+                </div>
+              </div>
+
+              {addMatchForm.status === 'LIVE' && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl space-y-2">
+                  <span className="font-extrabold text-emerald-800 text-[11px] block uppercase tracking-wider">Initial Live Score Settings:</span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-700 block mb-0.5">Team A Score / Overs:</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          placeholder="145/3"
+                          value={addMatchForm.teamAScore}
+                          onChange={(e) => setAddMatchForm({ ...addMatchForm, teamAScore: e.target.value })}
+                          className="w-1/2 p-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                        <input
+                          type="text"
+                          placeholder="15.2 ov"
+                          value={addMatchForm.teamAOvers}
+                          onChange={(e) => setAddMatchForm({ ...addMatchForm, teamAOvers: e.target.value })}
+                          className="w-1/2 p-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-emerald-700 block mb-0.5">Team B Score / Overs:</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="text"
+                          placeholder="148/4"
+                          value={addMatchForm.teamBScore}
+                          onChange={(e) => setAddMatchForm({ ...addMatchForm, teamBScore: e.target.value })}
+                          className="w-1/2 p-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono font-bold"
+                        />
+                        <input
+                          type="text"
+                          placeholder="18.4 ov"
+                          value={addMatchForm.teamBOvers}
+                          onChange={(e) => setAddMatchForm({ ...addMatchForm, teamBOvers: e.target.value })}
+                          className="w-1/2 p-1.5 bg-white border border-emerald-300 rounded-lg text-xs font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMatchModal(false)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingMatch}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm disabled:opacity-50"
+                >
+                  {submittingMatch ? 'Creating Match...' : 'Create Match & Generate Markets'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 2. MANAGE LIVE MATCH CONTROL & SCORE MODAL */}
+      {showLiveControlModal && selectedMatch && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 my-8">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-extrabold border border-emerald-200">
+                    LIVE ENGINE CONTROL
+                  </span>
+                  <span className="text-xs text-slate-500 font-bold">{selectedMatch.competition?.name}</span>
+                </div>
+                <h3 className="font-black text-slate-900 text-lg">
+                  {selectedMatch.teamA?.name} vs {selectedMatch.teamB?.name}
+                </h3>
+              </div>
+              <button onClick={() => setShowLiveControlModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">
+                &times;
+              </button>
+            </div>
+
+            {/* QUICK REAL-TIME BALL INCREMENT PANEL */}
+            <div className="bg-slate-900 text-white p-4 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-extrabold text-amber-400 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4" /> Quick Real-time Ball Controls
+                </span>
+                <span className="text-[10px] text-slate-300 font-mono font-bold bg-slate-800 px-2 py-0.5 rounded-md">
+                  Batting: {liveScoreForm.currentInnings === 1 ? selectedMatch.teamA?.name : selectedMatch.teamB?.name}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-5 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('1')}
+                  className="py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 transition-all active:scale-95 cursor-pointer"
+                >
+                  +1 Run
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('2')}
+                  className="py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs border border-slate-700 transition-all active:scale-95 cursor-pointer"
+                >
+                  +2 Runs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('4')}
+                  className="py-2 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl text-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  +4 Four!
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('6')}
+                  className="py-2 bg-purple-600 hover:bg-purple-500 text-white font-black rounded-xl text-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  +6 Six!
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('W')}
+                  className="py-2 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  W Wicket!
+                </button>
+              </div>
+
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('DOT')}
+                  className="py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl text-xs border border-slate-700 cursor-pointer"
+                >
+                  • Dot Ball
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('WD')}
+                  className="py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs border border-slate-700 cursor-pointer"
+                >
+                  WD Wide
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickBallAction('NB')}
+                  className="py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs border border-slate-700 cursor-pointer"
+                >
+                  NB No Ball
+                </button>
+                <div className="py-1.5 bg-slate-800 px-2 rounded-xl text-[11px] font-mono text-emerald-400 flex items-center justify-center border border-slate-700 truncate">
+                  {liveScoreForm.recentOvers || 'Over log empty'}
+                </div>
+              </div>
+            </div>
+
+            {/* DETAILED SCORE EDIT FORM */}
+            <form onSubmit={handleSaveLiveScore} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+                  <span className="font-extrabold text-blue-700 text-xs block">
+                    {selectedMatch.teamA?.name} (Team A)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-0.5">Score (Runs/Wkts):</label>
+                      <input
+                        type="text"
+                        value={liveScoreForm.teamAScore}
+                        onChange={(e) => setLiveScoreForm({ ...liveScoreForm, teamAScore: e.target.value })}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-0.5">Overs:</label>
+                      <input
+                        type="text"
+                        value={liveScoreForm.teamAOvers}
+                        onChange={(e) => setLiveScoreForm({ ...liveScoreForm, teamAOvers: e.target.value })}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-2">
+                  <span className="font-extrabold text-emerald-700 text-xs block">
+                    {selectedMatch.teamB?.name} (Team B)
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-0.5">Score (Runs/Wkts):</label>
+                      <input
+                        type="text"
+                        value={liveScoreForm.teamBScore}
+                        onChange={(e) => setLiveScoreForm({ ...liveScoreForm, teamBScore: e.target.value })}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-500 font-bold block mb-0.5">Overs:</label>
+                      <input
+                        type="text"
+                        value={liveScoreForm.teamBOvers}
+                        onChange={(e) => setLiveScoreForm({ ...liveScoreForm, teamBOvers: e.target.value })}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Batting Innings:</label>
+                  <select
+                    value={liveScoreForm.currentInnings}
+                    onChange={(e) => setLiveScoreForm({ ...liveScoreForm, currentInnings: parseInt(e.target.value) || 1 })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none"
+                  >
+                    <option value={1}>1st Innings ({selectedMatch.teamA?.name} Batting)</option>
+                    <option value={2}>2nd Innings ({selectedMatch.teamB?.name} Batting)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Live Status Banner / Commentary:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. South Africa need 31 runs in 28 balls"
+                    value={liveScoreForm.statusText}
+                    onChange={(e) => setLiveScoreForm({ ...liveScoreForm, statusText: e.target.value, resultSummary: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-medium focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Active Batsmen:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. V. Kohli 78* (45), R. Sharma 52 (30)"
+                    value={liveScoreForm.activeBatsman}
+                    onChange={(e) => setLiveScoreForm({ ...liveScoreForm, activeBatsman: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Active Bowler:</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. M. Starc 2/34 (3.4)"
+                    value={liveScoreForm.activeBowler}
+                    onChange={(e) => setLiveScoreForm({ ...liveScoreForm, activeBowler: e.target.value })}
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-100">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleDeclareWinner('teamA')}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-extrabold rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Declare {selectedMatch.teamA?.name} Winner
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeclareWinner('teamB')}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all cursor-pointer shadow-xs"
+                  >
+                    Declare {selectedMatch.teamB?.name} Winner
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLiveControlModal(false)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updatingLiveScore}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                  >
+                    {updatingLiveScore ? 'Saving...' : 'Save Live Score'}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3. EDIT MATCH DETAILS MODAL */}
+      {showEditMatchModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                <Edit3 className="w-5 h-5 text-slate-700" /> Edit Match Details
+              </h3>
+              <button onClick={() => setShowEditMatchModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleEditMatchSubmit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Team A Name:</label>
+                  <input
+                    type="text"
+                    value={editMatchForm.teamAName}
+                    onChange={(e) => setEditMatchForm({ ...editMatchForm, teamAName: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Team B Name:</label>
+                  <input
+                    type="text"
+                    value={editMatchForm.teamBName}
+                    onChange={(e) => setEditMatchForm({ ...editMatchForm, teamBName: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Format:</label>
+                  <select
+                    value={editMatchForm.matchType}
+                    onChange={(e) => setEditMatchForm({ ...editMatchForm, matchType: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+                  >
+                    <option value="T20">T20</option>
+                    <option value="ODI">ODI</option>
+                    <option value="TEST">TEST</option>
+                    <option value="FOOTBALL">FOOTBALL</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Status:</label>
+                  <select
+                    value={editMatchForm.status}
+                    onChange={(e) => setEditMatchForm({ ...editMatchForm, status: e.target.value })}
+                    className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900"
+                  >
+                    <option value="LIVE">LIVE</option>
+                    <option value="UPCOMING">UPCOMING</option>
+                    <option value="COMPLETED">COMPLETED</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Venue / Stadium:</label>
+                <input
+                  type="text"
+                  value={editMatchForm.venue}
+                  onChange={(e) => setEditMatchForm({ ...editMatchForm, venue: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Result / Live Note:</label>
+                <input
+                  type="text"
+                  value={editMatchForm.resultSummary}
+                  onChange={(e) => setEditMatchForm({ ...editMatchForm, resultSummary: e.target.value })}
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditMatchModal(false)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl"
+                >
+                  Save Changes
                 </button>
               </div>
             </form>

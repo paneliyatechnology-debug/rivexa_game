@@ -1,162 +1,86 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger, Inject, forwardRef } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
 import { SportsGateway } from './sports.gateway.js';
+import { CricketDataService } from '../modules/cricket-data/cricket-data.service.js';
 
 @Injectable()
 export class SportsProviderService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SportsProviderService.name);
   private syncIntervalHandle: NodeJS.Timeout | null = null;
+  private isAutoSyncActive = true;
+  private syncIntervalMs = parseInt(process.env.CRICKET_API_SYNC_INTERVAL || '5000', 10);
 
   constructor(
     private readonly db: DatabaseService,
     @Inject(forwardRef(() => SportsGateway))
-    private readonly gateway: SportsGateway
+    private readonly gateway: SportsGateway,
+    @Inject(forwardRef(() => CricketDataService))
+    private readonly cricketDataService: CricketDataService
   ) {}
 
   onModuleInit() {
-    this.startMockProviderSimulation();
+    this.startProviderSync();
   }
 
   onModuleDestroy() {
+    this.stopProviderSync();
+  }
+
+  public setAutoSync(enabled: boolean, intervalMs?: number) {
+    this.isAutoSyncActive = enabled;
+    if (intervalMs && intervalMs > 0) {
+      this.syncIntervalMs = intervalMs;
+    }
+    this.stopProviderSync();
+    if (enabled) {
+      this.startProviderSync();
+    }
+    this.logger.log(`Third-Party Live Cricket Sync ${enabled ? 'ENABLED' : 'DISABLED'} (${this.syncIntervalMs}ms interval)`);
+  }
+
+  public getAutoSyncStatus() {
+    return {
+      autoSync: this.isAutoSyncActive,
+      intervalMs: this.syncIntervalMs,
+      providerName: this.cricketDataService?.activeProviderName || 'Third-Party Cricket API',
+      status: this.isAutoSyncActive ? 'ACTIVE_SYNC' : 'PAUSED',
+    };
+  }
+
+  public async triggerInstantLiveBall(): Promise<any> {
+    return await this.syncLiveProviderData();
+  }
+
+  private stopProviderSync() {
     if (this.syncIntervalHandle) {
       clearInterval(this.syncIntervalHandle);
+      this.syncIntervalHandle = null;
     }
   }
 
-  private startMockProviderSimulation() {
-    this.logger.log('Starting MockSportsProvider simulation loop (every 5 seconds)...');
+  private startProviderSync() {
+    this.stopProviderSync();
+    this.logger.log(`Starting Third-Party Live Cricket API Sync (${this.syncIntervalMs}ms interval)...`);
     this.syncIntervalHandle = setInterval(async () => {
+      if (!this.isAutoSyncActive) return;
       try {
-        await this.simulateLiveCricketEvents();
+        await this.syncLiveProviderData();
       } catch (err) {
-        this.logger.error('Error simulating live sports events', err);
+        this.logger.error('Error in Third-Party Live Cricket API sync loop', err);
       }
-    }, 5000);
+    }, this.syncIntervalMs);
   }
 
-  private async simulateLiveCricketEvents() {
-    const liveMatches = await this.db.match.findMany({
-      where: { status: 'LIVE' },
-      include: {
-        score: true,
-        teamA: true,
-        teamB: true,
-      },
-    });
-
-    if (liveMatches.length === 0) return;
-
-    for (const match of liveMatches) {
-      const score = match.score;
-      if (!score) continue;
-
-      // Simulate a new ball event
-      const possibleRuns = [0, 1, 2, 4, 6];
-      const runs = possibleRuns[Math.floor(Math.random() * possibleRuns.length)];
-
-      // Parse current overs e.g. "16.2"
-      let currentOversFloat = parseFloat(score.teamBOvers || '0.0');
-      let overNum = Math.floor(currentOversFloat);
-      let ballNum = Math.round((currentOversFloat - overNum) * 10);
-
-      ballNum += 1;
-      if (ballNum >= 6) {
-        overNum += 1;
-        ballNum = 0;
+  public async syncLiveProviderData(): Promise<any> {
+    try {
+      if (!this.cricketDataService) {
+        return { success: false, message: 'CricketDataService not injected yet' };
       }
-
-      const newOversStr = `${overNum}.${ballNum}`;
-      const newOversFloat = overNum + ballNum * 0.1;
-
-      // Calculate new score for batting team e.g. "153/3"
-      let teamBRuns = 153;
-      let teamBWickets = 3;
-      if (score.teamBScore && score.teamBScore.includes('/')) {
-        const parts = score.teamBScore.split('/');
-        teamBRuns = parseInt(parts[0], 10) || 153;
-        teamBWickets = parseInt(parts[1], 10) || 3;
-      }
-
-      teamBRuns += runs;
-      const newTeamBScore = `${teamBRuns}/${teamBWickets}`;
-      const targetRuns = score.targetRuns || 187;
-      const runsNeeded = Math.max(0, targetRuns - teamBRuns);
-      const ballsRemaining = Math.max(0, 120 - (overNum * 6 + ballNum));
-
-      const statusText =
-        runsNeeded === 0
-          ? `${match.teamB?.name || 'Team B'} won the match!`
-          : `${match.teamB?.name || 'Australia'} need ${runsNeeded} runs in ${ballsRemaining} balls`;
-
-      // Event descriptions
-      let eventType = 'RUN';
-      let desc = `Delivery on length, pushed for ${runs} run(s).`;
-      if (runs === 4) {
-        eventType = 'FOUR';
-        desc = `CRACKED AWAY FOR FOUR! Splendid boundary to the fence.`;
-      } else if (runs === 6) {
-        eventType = 'SIX';
-        desc = `DISPATCHED FOR SIX! Massive blow straight over the bowler's head!`;
-      } else if (runs === 0) {
-        eventType = 'DOT';
-        desc = `Good tight line on off stump, defended back to bowler.`;
-      }
-
-      // Update database score record
-      const updatedScore = await this.db.matchScore.update({
-        where: { matchId: match.id },
-        data: {
-          teamBScore: newTeamBScore,
-          teamBOvers: newOversStr,
-          statusText,
-          recentOvers: `${score.recentOvers ? score.recentOvers.slice(-15) : ''} ${runs}`.trim(),
-        },
-      });
-
-      // Create commentary event
-      const commentary = await this.db.commentaryEvent.create({
-        data: {
-          matchId: match.id,
-          overNumber: parseFloat(newOversStr),
-          ballNumber: ballNum === 0 ? 6 : ballNum,
-          runs,
-          event: eventType,
-          bowler: 'J. Bumrah',
-          batsman: 'G. Maxwell',
-          description: desc,
-        },
-      });
-
-      // Broadcast real-time WebSocket events
-      this.gateway.broadcastScoreUpdate(match.id, {
-        matchId: match.id,
-        score: updatedScore,
-        latestCommentary: commentary,
-      });
-
-      this.gateway.broadcastBallCompleted(match.id, {
-        matchId: match.id,
-        overNumber: newOversFloat,
-        runs,
-        event: eventType,
-        commentary,
-        score: updatedScore,
-      });
-
-      // If target reached, mark match completed
-      if (runsNeeded === 0) {
-        await this.db.match.update({
-          where: { id: match.id },
-          data: {
-            status: 'COMPLETED',
-            resultSummary: `${match.teamB?.name || 'Australia'} won by ${10 - teamBWickets} wickets`,
-          },
-        });
-        this.gateway.broadcastMatchCompleted(match.id, {
-          matchId: match.id,
-          resultSummary: `${match.teamB?.name || 'Australia'} won by ${10 - teamBWickets} wickets`,
-        });
-      }
+      const matches = await this.cricketDataService.getCurrentMatches();
+      return { success: true, count: matches?.length || 0, matches };
+    } catch (err: any) {
+      this.logger.error('Failed syncing live provider data', err);
+      return { success: false, error: err.message || String(err) };
     }
   }
 }

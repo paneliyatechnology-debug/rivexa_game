@@ -4,11 +4,18 @@ import { useEffect, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getApiBaseUrl } from '@/lib/config';
 
-export function useSportsSocket(matchId?: string) {
+export function useSportsSocket(matchId?: string): {
+  isConnected: boolean;
+  liveUpdate: any;
+  ballEvent: any;
+  matchCompletedEvent: any;
+  socket: Socket | null;
+} {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [liveUpdate, setLiveUpdate] = useState<any>(null);
   const [ballEvent, setBallEvent] = useState<any>(null);
+  const [matchCompletedEvent, setMatchCompletedEvent] = useState<any>(null);
 
   useEffect(() => {
     // Deriving WebSocket URL from REST API Base URL
@@ -45,6 +52,10 @@ export function useSportsSocket(matchId?: string) {
       setBallEvent(data);
     });
 
+    socket.on('cricket.match.completed', (data: any) => {
+      setMatchCompletedEvent(data);
+    });
+
     return () => {
       if (matchId && socket.connected) {
         socket.emit('unsubscribe_match', { matchId });
@@ -57,6 +68,7 @@ export function useSportsSocket(matchId?: string) {
     isConnected,
     liveUpdate,
     ballEvent,
+    matchCompletedEvent,
     socket: socketRef.current,
   };
 }

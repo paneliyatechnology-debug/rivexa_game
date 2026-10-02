@@ -4,6 +4,7 @@ import { DatabaseService } from '../../database/database.service.js';
 @Injectable()
 export class CricketMarketsService implements OnModuleInit {
   private readonly logger = new Logger(CricketMarketsService.name);
+  private readonly cache = new Map<string, { data: any; expiresAt: number }>();
 
   constructor(private readonly db: DatabaseService) {}
 
@@ -12,6 +13,32 @@ export class CricketMarketsService implements OnModuleInit {
       await this.seedDefaultCategories();
     } catch (err: any) {
       this.logger.warn(`Failed seeding default categories: ${err.message}`);
+    }
+  }
+
+  private getFromCache<T>(key: string): T | null {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    return item.data as T;
+  }
+
+  private setToCache(key: string, data: any, ttlMs: number): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
+  public clearCache(prefix?: string): void {
+    if (!prefix) {
+      this.cache.clear();
+      return;
+    }
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
     }
   }
 
@@ -38,13 +65,24 @@ export class CricketMarketsService implements OnModuleInit {
   }
 
   async getMarketCategories() {
-    return await this.db.cricketMarketCategory.findMany({
+    const cacheKey = 'markets:categories';
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.db.cricketMarketCategory.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
     });
+
+    this.setToCache(cacheKey, res, 10000); // 10s TTL
+    return res;
   }
 
   async getMatchMarkets(matchId: string, categorySlug: string = 'all') {
+    const cacheKey = `markets:${matchId}:${categorySlug}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     let match = await this.db.match.findUnique({
       where: { id: matchId },
       include: { teamA: true, teamB: true },
@@ -92,7 +130,7 @@ export class CricketMarketsService implements OnModuleInit {
       orderBy: { sortOrder: 'asc' },
     });
 
-    return {
+    const result = {
       matchId: match.id,
       matchName: `${match.teamA?.name} vs ${match.teamB?.name}`,
       dataMode: 'STATISTICAL_MODEL',
@@ -100,6 +138,9 @@ export class CricketMarketsService implements OnModuleInit {
       exchangeAvailable: false,
       markets,
     };
+
+    this.setToCache(cacheKey, result, 1000); // 1.0s TTL for live market odds
+    return result;
   }
 
   async generateMarketsForMatch(match: any) {

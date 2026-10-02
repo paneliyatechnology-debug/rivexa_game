@@ -4,15 +4,71 @@ import { DatabaseService } from '../database/database.service.js';
 @Injectable()
 export class SportsService implements OnModuleInit {
   private readonly logger = new Logger(SportsService.name);
+  private readonly cache = new Map<string, { data: any; expiresAt: number }>();
 
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit() {
     try {
       await this.seedInitialSportsData();
-      await this.ensureLiveMatches();
+      await this.cleanMockCommentary();
     } catch (err) {
-      this.logger.error('Failed seeding sports data', err);
+      this.logger.error('Failed initializing sports platform data', err);
+    }
+  }
+
+  public async cleanMockCommentary() {
+    try {
+      await this.db.commentaryEvent.deleteMany({
+        where: {
+          OR: [
+            { bowler: { contains: 'MC Bowler' } },
+            { bowler: { contains: 'CS Batter' } },
+            { batsman: { contains: 'CS Batter' } },
+            { batsman: { contains: 'MC Bowler' } },
+            { description: { contains: 'CS Batter' } },
+            { description: { contains: 'MC Bowler' } },
+            { bowler: { contains: 'Batter' } },
+            { bowler: { contains: 'Bowler' } },
+            { batsman: { contains: 'Batter' } },
+            { batsman: { contains: 'Bowler' } },
+            { description: { contains: 'Batter' } },
+            { description: { contains: 'Bowler' } },
+          ],
+        },
+      });
+    } catch (err) {
+      // Ignore
+    }
+  }
+
+  // ─────────────────────────────────────────────
+  // RAM MICRO-CACHE HELPERS FOR HIGH CONCURRENCY
+  // ─────────────────────────────────────────────
+
+  private getFromCache<T>(key: string): T | null {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    return item.data as T;
+  }
+
+  private setToCache(key: string, data: any, ttlMs: number): void {
+    this.cache.set(key, { data, expiresAt: Date.now() + ttlMs });
+  }
+
+  public clearCache(prefix?: string): void {
+    if (!prefix) {
+      this.cache.clear();
+      return;
+    }
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
     }
   }
 
@@ -21,6 +77,10 @@ export class SportsService implements OnModuleInit {
   // ─────────────────────────────────────────────
 
   async getAllSports() {
+    const cacheKey = 'sports:all';
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     const sports = await this.db.sport.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
@@ -46,10 +106,15 @@ export class SportsService implements OnModuleInit {
       })
     );
 
+    this.setToCache(cacheKey, enriched, 5000); // 5 sec RAM cache
     return enriched;
   }
 
   async getSportBySlug(slug: string) {
+    const cacheKey = `sport:${slug}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(slug);
     const sport = await this.db.sport.findFirst({
       where: {
@@ -73,7 +138,7 @@ export class SportsService implements OnModuleInit {
       where: { sportId: sport.id, status: 'UPCOMING' },
     });
 
-    return {
+    const result = {
       ...sport,
       matchCount: {
         live: liveCount,
@@ -81,9 +146,16 @@ export class SportsService implements OnModuleInit {
         total: liveCount + upcomingCount,
       },
     };
+
+    this.setToCache(cacheKey, result, 5000);
+    return result;
   }
 
   async getCompetitions(sportSlugOrId: string) {
+    const cacheKey = `competitions:${sportSlugOrId}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     const sport = await this.getSportBySlug(sportSlugOrId);
     if (!sport) return [];
 
@@ -92,7 +164,7 @@ export class SportsService implements OnModuleInit {
       orderBy: { sortOrder: 'asc' },
     });
 
-    return Promise.all(
+    const result = await Promise.all(
       competitions.map(async (comp: any) => {
         const matchCount = await this.db.match.count({
           where: { competitionId: comp.id },
@@ -100,10 +172,13 @@ export class SportsService implements OnModuleInit {
         return { ...comp, matchCount };
       })
     );
+
+    this.setToCache(cacheKey, result, 5000);
+    return result;
   }
 
   // ─────────────────────────────────────────────
-  // MATCH LISTINGS & GROUPINGS
+  // MATCH LISTINGS & GROUPINGS (OPTIMIZED)
   // ─────────────────────────────────────────────
 
   async getMatches(params: {
@@ -112,6 +187,10 @@ export class SportsService implements OnModuleInit {
     competitionId?: string;
     limit?: number;
   }) {
+    const cacheKey = `matches:${JSON.stringify(params)}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     let sportId: string | undefined;
     if (params.sportSlugOrId) {
       const sport = await this.getSportBySlug(params.sportSlugOrId);
@@ -136,80 +215,139 @@ export class SportsService implements OnModuleInit {
       take: params.limit || 50,
     });
 
+    this.setToCache(cacheKey, matches, 1500); // 1.5s TTL
     return matches;
   }
 
   async getLiveMatchesGroupedByCompetition(sportSlugOrId: string) {
+    const cacheKey = `matches:live:grouped:${sportSlugOrId}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     const sport = await this.getSportBySlug(sportSlugOrId);
     if (!sport) return [];
 
-    const competitions = await this.db.competition.findMany({
-      where: { sportId: sport.id, isActive: true },
-      orderBy: { sortOrder: 'asc' },
+    const matches = await this.db.match.findMany({
+      where: {
+        sportId: sport.id,
+        status: 'LIVE',
+      },
+      include: {
+        competition: true,
+        teamA: true,
+        teamB: true,
+        score: true,
+      },
+      orderBy: { startTime: 'asc' },
     });
 
-    const result = [];
-    for (const comp of competitions) {
-      const matches = await this.db.match.findMany({
-        where: {
-          sportId: sport.id,
-          competitionId: comp.id,
-          status: 'LIVE',
-        },
-        include: {
-          teamA: true,
-          teamB: true,
-          score: true,
-        },
-        orderBy: { startTime: 'asc' },
-      });
-
-      if (matches.length > 0) {
-        result.push({
-          ...comp,
-          matches,
-          matchCount: matches.length,
+    const compMap = new Map<string, { comp: any; matches: any[] }>();
+    for (const match of matches) {
+      const compId = match.competitionId || 'other';
+      if (!compMap.has(compId)) {
+        compMap.set(compId, {
+          comp: match.competition || { id: 'other', name: 'Other Matches' },
+          matches: [],
         });
       }
+      compMap.get(compId)!.matches.push(match);
     }
 
+    const result = Array.from(compMap.values()).map(({ comp, matches }) => ({
+      ...comp,
+      matches,
+      matchCount: matches.length,
+    }));
+
+    this.setToCache(cacheKey, result, 1500);
     return result;
   }
 
   async getUpcomingMatchesGroupedByCompetition(sportSlugOrId: string) {
+    const cacheKey = `matches:upcoming:grouped:${sportSlugOrId}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
     const sport = await this.getSportBySlug(sportSlugOrId);
     if (!sport) return [];
 
-    const competitions = await this.db.competition.findMany({
-      where: { sportId: sport.id, isActive: true },
-      orderBy: { sortOrder: 'asc' },
+    const matches = await this.db.match.findMany({
+      where: {
+        sportId: sport.id,
+        status: 'UPCOMING',
+      },
+      include: {
+        competition: true,
+        teamA: true,
+        teamB: true,
+        score: true,
+      },
+      orderBy: { startTime: 'asc' },
     });
 
-    const result = [];
-    for (const comp of competitions) {
-      const matches = await this.db.match.findMany({
-        where: {
-          sportId: sport.id,
-          competitionId: comp.id,
-          status: 'UPCOMING',
-        },
-        include: {
-          teamA: true,
-          teamB: true,
-          score: true,
-        },
-        orderBy: { startTime: 'asc' },
-      });
-
-      if (matches.length > 0) {
-        result.push({
-          ...comp,
-          matches,
-          matchCount: matches.length,
+    const compMap = new Map<string, { comp: any; matches: any[] }>();
+    for (const match of matches) {
+      const compId = match.competitionId || 'other';
+      if (!compMap.has(compId)) {
+        compMap.set(compId, {
+          comp: match.competition || { id: 'other', name: 'Upcoming Matches' },
+          matches: [],
         });
       }
+      compMap.get(compId)!.matches.push(match);
     }
 
+    const result = Array.from(compMap.values()).map(({ comp, matches }) => ({
+      ...comp,
+      matches,
+      matchCount: matches.length,
+    }));
+
+    this.setToCache(cacheKey, result, 5000);
+    return result;
+  }
+
+  async getAllMatchesGroupedByCompetition(sportSlugOrId: string) {
+    const cacheKey = `matches:all:grouped:${sportSlugOrId}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const sport = await this.getSportBySlug(sportSlugOrId);
+    if (!sport) return [];
+
+    const matches = await this.db.match.findMany({
+      where: {
+        sportId: sport.id,
+        status: { in: ['LIVE', 'UPCOMING'] },
+      },
+      include: {
+        competition: true,
+        teamA: true,
+        teamB: true,
+        score: true,
+      },
+      orderBy: [{ status: 'asc' }, { startTime: 'asc' }],
+    });
+
+    const compMap = new Map<string, { comp: any; matches: any[] }>();
+    for (const match of matches) {
+      const compId = match.competitionId || 'other';
+      if (!compMap.has(compId)) {
+        compMap.set(compId, {
+          comp: match.competition || { id: 'other', name: 'All Competition Matches' },
+          matches: [],
+        });
+      }
+      compMap.get(compId)!.matches.push(match);
+    }
+
+    const result = Array.from(compMap.values()).map(({ comp, matches }) => ({
+      ...comp,
+      matches,
+      matchCount: matches.length,
+    }));
+
+    this.setToCache(cacheKey, result, 1500);
     return result;
   }
 
@@ -218,6 +356,10 @@ export class SportsService implements OnModuleInit {
   // ─────────────────────────────────────────────
 
   async getMatchById(matchId: string) {
+    const cacheKey = `match:${matchId}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const match = await this.db.match.findUnique({
       where: { id: matchId },
       include: {
@@ -244,651 +386,175 @@ export class SportsService implements OnModuleInit {
 
     if (!match) return null;
 
-    // Build statistics summary
+    // Calculate dynamic win probabilities from current score metrics
+    let winProbA = 50;
+    let winProbB = 50;
+    if (match.score) {
+      const crr = match.score.currentRunRate || 8.0;
+      const rrr = match.score.requiredRunRate || 8.0;
+      const diff = crr - rrr;
+      winProbA = Math.min(95, Math.max(5, Math.round(50 + diff * 5)));
+      winProbB = 100 - winProbA;
+    }
+
     const statsSummary = {
-      winProbabilityTeamA: 62,
-      winProbabilityTeamB: 38,
-      pitchReport: 'Batting-friendly track with good pace and even bounce. High scoring expected.',
-      weatherReport: '31°C Clear Sky, 45% Humidity',
+      winProbabilityTeamA: winProbA,
+      winProbabilityTeamB: winProbB,
       tossWinner: match.teamA?.name,
       tossDecision: 'Elected to bat first',
     };
 
-    return {
+    const result = {
       ...match,
       statsSummary,
     };
+
+    this.setToCache(cacheKey, result, 1500);
+    return result;
   }
 
   async getMatchScore(matchId: string) {
-    return this.db.matchScore.findUnique({
+    const cacheKey = `match:score:${matchId}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.db.matchScore.findUnique({
       where: { matchId },
     });
+
+    this.setToCache(cacheKey, res, 1000);
+    return res;
   }
 
   async getMatchScorecard(matchId: string) {
+    const cacheKey = `match:scorecard:${matchId}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const sc = await this.db.scorecard.findUnique({
       where: { matchId },
     });
-    return sc?.data || null;
+    const res = sc?.data || null;
+
+    this.setToCache(cacheKey, res, 2000);
+    return res;
   }
 
   async getMatchCommentary(matchId: string, limit = 50) {
-    return this.db.commentaryEvent.findMany({
+    const cacheKey = `match:commentary:${matchId}:${limit}`;
+    const cached = this.getFromCache<any[]>(cacheKey);
+    if (cached) return cached;
+
+    const res = await this.db.commentaryEvent.findMany({
       where: { matchId },
       orderBy: [{ overNumber: 'desc' }, { ballNumber: 'desc' }],
       take: limit,
     });
+
+    this.setToCache(cacheKey, res, 1000);
+    return res;
   }
 
   async getMatchStatistics(matchId: string) {
+    const cacheKey = `match:stats:${matchId}`;
+    const cached = this.getFromCache<any>(cacheKey);
+    if (cached) return cached;
+
     const match = await this.getMatchById(matchId);
     if (!match) return null;
 
-    return {
+    // Calculate boundary counts dynamically from commentary events
+    const foursCount = await this.db.commentaryEvent.count({
+      where: { matchId, event: 'FOUR' },
+    });
+    const sixesCount = await this.db.commentaryEvent.count({
+      where: { matchId, event: 'SIX' },
+    });
+
+    // Calculate head-to-head dynamically from completed DB matches
+    const completedMatches = await this.db.match.findMany({
+      where: {
+        status: 'COMPLETED',
+        OR: [
+          { teamAId: match.teamAId, teamBId: match.teamBId },
+          { teamAId: match.teamBId, teamBId: match.teamAId },
+        ],
+      },
+    });
+
+    let teamAWins = 0;
+    let teamBWins = 0;
+    completedMatches.forEach((m: any) => {
+      if (m.winningTeamId === match.teamAId) teamAWins += 1;
+      else if (m.winningTeamId === match.teamBId) teamBWins += 1;
+    });
+
+    const winProbA = match.statsSummary?.winProbabilityTeamA || 50;
+    const winProbB = match.statsSummary?.winProbabilityTeamB || 50;
+
+    const res = {
       matchId,
       teamA: match.teamA,
       teamB: match.teamB,
       headToHead: {
-        totalMatches: 14,
-        teamAWins: 8,
-        teamBWins: 5,
-        noResult: 1,
+        totalMatches: completedMatches.length,
+        teamAWins,
+        teamBWins,
+        noResult: Math.max(0, completedMatches.length - (teamAWins + teamBWins)),
       },
       boundaries: {
-        teamAFours: 18,
-        teamASixes: 7,
-        teamBFours: 14,
-        teamBSixes: 5,
+        foursCount,
+        sixesCount,
       },
       winProbability: {
-        teamA: 64,
-        teamB: 36,
-      },
-      recentForm: {
-        teamA: ['W', 'W', 'L', 'W', 'W'],
-        teamB: ['L', 'W', 'W', 'L', 'L'],
+        teamA: winProbA,
+        teamB: winProbB,
       },
     };
+
+    this.setToCache(cacheKey, res, 3000);
+    return res;
   }
 
   // ─────────────────────────────────────────────
-  // INITIAL SEEDING
+  // INITIAL SEEDING (BASE CATEGORIES ONLY)
   // ─────────────────────────────────────────────
 
   async seedInitialSportsData() {
     const existingCount = await this.db.sport.count();
     if (existingCount > 0) {
-      this.logger.log('Sports data already seeded.');
+      this.logger.log('Sports categories already seeded.');
       return;
     }
 
-    this.logger.log('Seeding initial Sports platform data...');
+    this.logger.log('Initializing base Sports categories...');
 
-    // 1. Create Sports
-    const cricket = await this.db.sport.create({
-      data: {
-        slug: 'cricket',
-        name: 'Cricket',
-        icon: 'trophy',
-        sortOrder: 1,
-        isActive: true,
-      },
-    });
-
-    const football = await this.db.sport.create({
-      data: {
-        slug: 'football',
-        name: 'Football',
-        icon: 'circle-dot',
-        sortOrder: 2,
-        isActive: true,
-      },
-    });
-
-    const tennis = await this.db.sport.create({
-      data: {
-        slug: 'tennis',
-        name: 'Tennis',
-        icon: 'activity',
-        sortOrder: 3,
-        isActive: true,
-      },
-    });
-
-    const basketball = await this.db.sport.create({
-      data: {
-        slug: 'basketball',
-        name: 'Basketball',
-        icon: 'dribble',
-        sortOrder: 4,
-        isActive: true,
-      },
-    });
-
-    const virtualSports = await this.db.sport.create({
-      data: {
-        slug: 'virtual-sports',
-        name: 'Virtual Sports',
-        icon: 'cpu',
-        sortOrder: 5,
-        isActive: true,
-      },
-    });
-
-    const americanFootball = await this.db.sport.create({
-      data: {
-        slug: 'american-football',
-        name: 'American Football',
-        icon: 'shield',
-        sortOrder: 6,
-        isActive: true,
-      },
-    });
-
-    const horseRacing = await this.db.sport.create({
-      data: {
-        slug: 'horse-racing',
-        name: 'Horse Racing',
-        icon: 'zap',
-        sortOrder: 7,
-        isActive: true,
-      },
-    });
-
-    const greyhound = await this.db.sport.create({
-      data: {
-        slug: 'greyhound-racing',
-        name: 'Greyhound Racing',
-        icon: 'flame',
-        sortOrder: 8,
-        isActive: true,
-      },
-    });
-
-    const baseball = await this.db.sport.create({
-      data: {
-        slug: 'baseball',
-        name: 'Baseball',
-        icon: 'target',
-        sortOrder: 9,
-        isActive: true,
-      },
-    });
-
-    const mma = await this.db.sport.create({
-      data: {
-        slug: 'mma',
-        name: 'Mixed Martial Arts',
-        icon: 'swords',
-        sortOrder: 10,
-        isActive: true,
-      },
-    });
-
-    // 2. Create Cricket Competitions
-    const compIPL = await this.db.competition.create({
-      data: {
-        sportId: cricket.id,
-        slug: 't20-premier-league',
-        name: 'T20 Premier League 2026',
-        country: 'India',
-        sortOrder: 1,
-        isActive: true,
-      },
-    });
-
-    const compIntlT20 = await this.db.competition.create({
-      data: {
-        sportId: cricket.id,
-        slug: 't20-international-series',
-        name: 'International T20 Trophy',
-        country: 'Global',
-        sortOrder: 2,
-        isActive: true,
-      },
-    });
-
-    const compODI = await this.db.competition.create({
-      data: {
-        sportId: cricket.id,
-        slug: 'one-day-internationals',
-        name: 'One Day Internationals Series',
-        country: 'Global',
-        sortOrder: 3,
-        isActive: true,
-      },
-    });
-
-    const compTest = await this.db.competition.create({
-      data: {
-        sportId: cricket.id,
-        slug: 'world-test-championship',
-        name: 'World Test Championship',
-        country: 'Global',
-        sortOrder: 4,
-        isActive: true,
-      },
-    });
-
-    // 3. Create Teams
-    const teamInd = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'India',
-        shortName: 'IND',
-        flagCode: 'IN',
-        country: 'India',
-      },
-    });
-
-    const teamAus = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'Australia',
-        shortName: 'AUS',
-        flagCode: 'AU',
-        country: 'Australia',
-      },
-    });
-
-    const teamEng = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'England',
-        shortName: 'ENG',
-        flagCode: 'GB',
-        country: 'United Kingdom',
-      },
-    });
-
-    const teamSA = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'South Africa',
-        shortName: 'SA',
-        flagCode: 'ZA',
-        country: 'South Africa',
-      },
-    });
-
-    const teamMI = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'Mumbai Champions',
-        shortName: 'MC',
-        flagCode: 'IN',
-        country: 'India',
-      },
-    });
-
-    const teamCSK = await this.db.team.create({
-      data: {
-        sportId: cricket.id,
-        name: 'Chennai Superstars',
-        shortName: 'CS',
-        flagCode: 'IN',
-        country: 'India',
-      },
-    });
-
-    // 4. Create Players for Team India & Australia
-    const indPlayers = [
-      { name: 'Rohit Sharma', role: 'Batsman', jerseyNumber: 45 },
-      { name: 'Shubman Gill', role: 'Batsman', jerseyNumber: 77 },
-      { name: 'Virat Kohli', role: 'Batsman', jerseyNumber: 18 },
-      { name: 'Suryakumar Yadav', role: 'Batsman', jerseyNumber: 63 },
-      { name: 'Rishabh Pant', role: 'Wicket Keeper', jerseyNumber: 17 },
-      { name: 'Hardik Pandya', role: 'All-Rounder', jerseyNumber: 33 },
-      { name: 'Ravindra Jadeja', role: 'All-Rounder', jerseyNumber: 8 },
-      { name: 'Axar Patel', role: 'All-Rounder', jerseyNumber: 20 },
-      { name: 'Kuldeep Yadav', role: 'Bowler', jerseyNumber: 23 },
-      { name: 'Jasprit Bumrah', role: 'Bowler', jerseyNumber: 93 },
-      { name: 'Mohammed Siraj', role: 'Bowler', jerseyNumber: 73 },
+    const sportsToSeed = [
+      { slug: 'cricket', name: 'Cricket', icon: 'trophy', sortOrder: 1 },
+      { slug: 'football', name: 'Football', icon: 'circle-dot', sortOrder: 2 },
+      { slug: 'tennis', name: 'Tennis', icon: 'activity', sortOrder: 3 },
+      { slug: 'basketball', name: 'Basketball', icon: 'dribble', sortOrder: 4 },
+      { slug: 'virtual-sports', name: 'Virtual Sports', icon: 'cpu', sortOrder: 5 },
+      { slug: 'american-football', name: 'American Football', icon: 'shield', sortOrder: 6 },
+      { slug: 'horse-racing', name: 'Horse Racing', icon: 'zap', sortOrder: 7 },
+      { slug: 'greyhound-racing', name: 'Greyhound Racing', icon: 'flame', sortOrder: 8 },
+      { slug: 'baseball', name: 'Baseball', icon: 'target', sortOrder: 9 },
+      { slug: 'mma', name: 'Mixed Martial Arts', icon: 'swords', sortOrder: 10 },
     ];
 
-    for (const p of indPlayers) {
-      await this.db.player.create({
+    for (const s of sportsToSeed) {
+      await this.db.sport.create({
         data: {
-          teamId: teamInd.id,
-          name: p.name,
-          role: p.role,
-          jerseyNumber: p.jerseyNumber,
+          slug: s.slug,
+          name: s.name,
+          icon: s.icon,
+          sortOrder: s.sortOrder,
+          isActive: true,
         },
       });
     }
 
-    const ausPlayers = [
-      { name: 'Travis Head', role: 'Batsman', jerseyNumber: 62 },
-      { name: 'David Warner', role: 'Batsman', jerseyNumber: 31 },
-      { name: 'Steve Smith', role: 'Batsman', jerseyNumber: 49 },
-      { name: 'Marnus Labuschagne', role: 'Batsman', jerseyNumber: 33 },
-      { name: 'Glenn Maxwell', role: 'All-Rounder', jerseyNumber: 32 },
-      { name: 'Marcus Stoinis', role: 'All-Rounder', jerseyNumber: 17 },
-      { name: 'Alex Carey', role: 'Wicket Keeper', jerseyNumber: 4 },
-      { name: 'Pat Cummins', role: 'Bowler', jerseyNumber: 30 },
-      { name: 'Mitchell Starc', role: 'Bowler', jerseyNumber: 56 },
-      { name: 'Josh Hazlewood', role: 'Bowler', jerseyNumber: 38 },
-      { name: 'Adam Zampa', role: 'Bowler', jerseyNumber: 88 },
-    ];
-
-    for (const p of ausPlayers) {
-      await this.db.player.create({
-        data: {
-          teamId: teamAus.id,
-          name: p.name,
-          role: p.role,
-          jerseyNumber: p.jerseyNumber,
-        },
-      });
-    }
-
-    // 5. Create Live Cricket Match (IND vs AUS T20 International)
-    const matchLive1 = await this.db.match.create({
-      data: {
-        sportId: cricket.id,
-        competitionId: compIntlT20.id,
-        teamAId: teamInd.id,
-        teamBId: teamAus.id,
-        venue: 'Narendra Modi Stadium, Ahmedabad',
-        matchType: 'T20',
-        status: 'LIVE',
-        startTime: new Date(),
-        resultSummary: 'India need 34 runs off 22 balls',
-      },
-    });
-
-    await this.db.matchScore.create({
-      data: {
-        matchId: matchLive1.id,
-        teamAScore: '186/4',
-        teamAOvers: '20.0',
-        teamBScore: '153/3',
-        teamBOvers: '16.2',
-        currentInnings: 2,
-        currentRunRate: 9.36,
-        requiredRunRate: 9.27,
-        targetRuns: 187,
-        statusText: 'Australia need 34 runs in 22 balls',
-        activeBatsman: 'G. Maxwell 54* (28), M. Stoinis 18* (11)',
-        activeBowler: 'J. Bumrah 2/24 (3.2)',
-        recentOvers: '1 4 0 6 1 4',
-      },
-    });
-
-    const scorecardDataLive = {
-      firstInnings: {
-        inningsName: 'India Innings',
-        teamName: 'India',
-        totalRuns: 186,
-        wickets: 4,
-        overs: '20.0',
-        batting: [
-          { batsmanName: 'Rohit Sharma', dismissal: 'c Carey b Starc', runs: 42, balls: 26, fours: 5, sixes: 2, strikeRate: 161.54, isCaptain: true },
-          { batsmanName: 'Shubman Gill', dismissal: 'b Cummins', runs: 31, balls: 20, fours: 4, sixes: 1, strikeRate: 155.00 },
-          { batsmanName: 'Virat Kohli', dismissal: 'not out', runs: 68, balls: 44, fours: 6, sixes: 3, strikeRate: 154.55 },
-          { batsmanName: 'Suryakumar Yadav', dismissal: 'c Head b Zampa', runs: 24, balls: 14, fours: 2, sixes: 2, strikeRate: 171.42 },
-          { batsmanName: 'Rishabh Pant', dismissal: 'c & b Starc', runs: 12, balls: 9, fours: 1, sixes: 0, strikeRate: 133.33, isWicketKeeper: true },
-          { batsmanName: 'Hardik Pandya', dismissal: 'not out', runs: 7, balls: 7, fours: 0, sixes: 0, strikeRate: 100.00 },
-        ],
-        bowling: [
-          { bowlerName: 'Mitchell Starc', overs: '4.0', maidens: 0, runsConceded: 41, wickets: 2, economy: 10.25 },
-          { bowlerName: 'Josh Hazlewood', overs: '4.0', maidens: 0, runsConceded: 32, wickets: 0, economy: 8.00 },
-          { bowlerName: 'Pat Cummins', overs: '4.0', maidens: 0, runsConceded: 38, wickets: 1, economy: 9.50 },
-          { bowlerName: 'Adam Zampa', overs: '4.0', maidens: 0, runsConceded: 45, wickets: 1, economy: 11.25 },
-          { bowlerName: 'Marcus Stoinis', overs: '4.0', maidens: 0, runsConceded: 30, wickets: 0, economy: 7.50 },
-        ],
-        extras: { wides: 3, noBalls: 1, byes: 0, legByes: 2, total: 6 },
-        fallOfWickets: [
-          { wicketNumber: 1, score: 58, overs: '5.4', batsmanName: 'Rohit Sharma' },
-          { wicketNumber: 2, score: 94, overs: '9.2', batsmanName: 'Shubman Gill' },
-          { wicketNumber: 3, score: 142, overs: '14.5', batsmanName: 'Suryakumar Yadav' },
-          { wicketNumber: 4, score: 171, overs: '18.1', batsmanName: 'Rishabh Pant' },
-        ],
-      },
-      secondInnings: {
-        inningsName: 'Australia Innings',
-        teamName: 'Australia',
-        totalRuns: 153,
-        wickets: 3,
-        overs: '16.2',
-        batting: [
-          { batsmanName: 'Travis Head', dismissal: 'c Pant b Bumrah', runs: 38, balls: 22, fours: 4, sixes: 2, strikeRate: 172.72 },
-          { batsmanName: 'David Warner', dismissal: 'b Siraj', runs: 29, balls: 19, fours: 3, sixes: 1, strikeRate: 152.63 },
-          { batsmanName: 'Steve Smith', dismissal: 'lbw b Kuldeep', runs: 14, balls: 11, fours: 1, sixes: 0, strikeRate: 127.27 },
-          { batsmanName: 'Glenn Maxwell', dismissal: 'not out', runs: 54, balls: 28, fours: 5, sixes: 3, strikeRate: 192.85 },
-          { batsmanName: 'Marcus Stoinis', dismissal: 'not out', runs: 18, balls: 11, fours: 2, sixes: 0, strikeRate: 163.63 },
-        ],
-        bowling: [
-          { bowlerName: 'Jasprit Bumrah', overs: '3.2', maidens: 0, runsConceded: 24, wickets: 1, economy: 7.20 },
-          { bowlerName: 'Mohammed Siraj', overs: '4.0', maidens: 0, runsConceded: 39, wickets: 1, economy: 9.75 },
-          { bowlerName: 'Hardik Pandya', overs: '3.0', maidens: 0, runsConceded: 35, wickets: 0, economy: 11.66 },
-          { bowlerName: 'Kuldeep Yadav', overs: '4.0', maidens: 0, runsConceded: 33, wickets: 1, economy: 8.25 },
-          { bowlerName: 'Axar Patel', overs: '2.0', maidens: 0, runsConceded: 22, wickets: 0, economy: 11.00 },
-        ],
-        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, total: 0 },
-        fallOfWickets: [
-          { wicketNumber: 1, score: 52, overs: '5.1', batsmanName: 'David Warner' },
-          { wicketNumber: 2, score: 78, overs: '8.3', batsmanName: 'Travis Head' },
-          { wicketNumber: 3, score: 106, overs: '11.4', batsmanName: 'Steve Smith' },
-        ],
-      },
-    };
-
-    await this.db.scorecard.create({
-      data: {
-        matchId: matchLive1.id,
-        data: scorecardDataLive as any,
-      },
-    });
-
-    const commentariesLive = [
-      { overNumber: 16.2, ballNumber: 2, runs: 4, event: 'FOUR', bowler: 'J. Bumrah', batsman: 'G. Maxwell', description: 'CRACKED AWAY! Full length outside off, Maxwell carves it over backward point for FOUR!' },
-      { overNumber: 16.1, ballNumber: 1, runs: 1, event: 'SINGLE', bowler: 'J. Bumrah', batsman: 'M. Stoinis', description: 'Good yorker on middle stump, dug out towards mid-on for a single.' },
-      { overNumber: 15.6, ballNumber: 6, runs: 6, event: 'SIX', bowler: 'A. Patel', batsman: 'G. Maxwell', description: 'BANG! Flighted on middle, Maxwell launches it high into the night sky over long-on for a massive SIX!' },
-      { overNumber: 15.5, ballNumber: 5, runs: 0, event: 'DOT', bowler: 'A. Patel', batsman: 'G. Maxwell', description: 'Flatter delivery outside off, pushed straight to extra cover.' },
-      { overNumber: 15.4, ballNumber: 4, runs: 1, event: 'SINGLE', bowler: 'A. Patel', batsman: 'M. Stoinis', description: 'Tucked away off the hips down to fine leg for one.' },
-    ];
-
-    for (const c of commentariesLive) {
-      await this.db.commentaryEvent.create({
-        data: {
-          matchId: matchLive1.id,
-          overNumber: c.overNumber,
-          ballNumber: c.ballNumber,
-          runs: c.runs,
-          event: c.event,
-          bowler: c.bowler,
-          batsman: c.batsman,
-          description: c.description,
-        },
-      });
-    }
-
-    // 6. Create Live Match 2 (Mumbai Champions vs Chennai Superstars)
-    const matchLive2 = await this.db.match.create({
-      data: {
-        sportId: cricket.id,
-        competitionId: compIPL.id,
-        teamAId: teamMI.id,
-        teamBId: teamCSK.id,
-        venue: 'Wankhede Stadium, Mumbai',
-        matchType: 'T20',
-        status: 'LIVE',
-        startTime: new Date(),
-        resultSummary: 'Mumbai Champions elected to bat first',
-      },
-    });
-
-    await this.db.matchScore.create({
-      data: {
-        matchId: matchLive2.id,
-        teamAScore: '142/3',
-        teamAOvers: '15.4',
-        teamBScore: 'Yet to bat',
-        teamBOvers: '0.0',
-        currentInnings: 1,
-        currentRunRate: 9.07,
-        requiredRunRate: null,
-        targetRuns: null,
-        statusText: 'Mumbai Champions in strong position at 142/3 (15.4 ov)',
-        activeBatsman: 'R. Sharma 58* (36), H. Pandya 22* (12)',
-        activeBowler: 'D. Chahar 1/28 (3.4)',
-        recentOvers: '4 1 6 2 0 1',
-      },
-    });
-
-    // 7. Create Upcoming Matches
-    const upcomingDate1 = new Date(Date.now() + 1000 * 60 * 60 * 5); // 5 hours from now
-    await this.db.match.create({
-      data: {
-        sportId: cricket.id,
-        competitionId: compIntlT20.id,
-        teamAId: teamEng.id,
-        teamBId: teamSA.id,
-        venue: 'Lord\'s Cricket Ground, London',
-        matchType: 'T20',
-        status: 'UPCOMING',
-        startTime: upcomingDate1,
-        resultSummary: 'Starts today at 19:30 IST',
-      },
-    });
-
-    const upcomingDate2 = new Date(Date.now() + 1000 * 60 * 60 * 26); // Tomorrow
-    await this.db.match.create({
-      data: {
-        sportId: cricket.id,
-        competitionId: compODI.id,
-        teamAId: teamInd.id,
-        teamBId: teamEng.id,
-        venue: 'M. Chinnaswamy Stadium, Bengaluru',
-        matchType: 'ODI',
-        status: 'UPCOMING',
-        startTime: upcomingDate2,
-        resultSummary: '1st ODI match',
-      },
-    });
-
-    const upcomingDate3 = new Date(Date.now() + 1000 * 60 * 60 * 50); // 2 days later
-    await this.db.match.create({
-      data: {
-        sportId: cricket.id,
-        competitionId: compTest.id,
-        teamAId: teamAus.id,
-        teamBId: teamEng.id,
-        venue: 'The MCG, Melbourne',
-        matchType: 'TEST',
-        status: 'UPCOMING',
-        startTime: upcomingDate3,
-        resultSummary: '3rd Test - The Ashes',
-      },
-    });
-
-    // 8. Create Football Mock Match
-    const matchFootball = await this.db.match.create({
-      data: {
-        sportId: football.id,
-        competitionId: (await this.db.competition.create({
-          data: {
-            sportId: football.id,
-            slug: 'champions-league',
-            name: 'UEFA Champions League',
-            country: 'Europe',
-          },
-        })).id,
-        teamAId: (await this.db.team.create({
-          data: {
-            sportId: football.id,
-            name: 'Real Madrid',
-            shortName: 'RMA',
-            flagCode: 'ES',
-          },
-        })).id,
-        teamBId: (await this.db.team.create({
-          data: {
-            sportId: football.id,
-            name: 'Manchester City',
-            shortName: 'MCI',
-            flagCode: 'GB',
-          },
-        })).id,
-        venue: 'Santiago Bernabéu, Madrid',
-        matchType: 'FOOTBALL',
-        status: 'LIVE',
-        startTime: new Date(),
-        resultSummary: '2nd Half - 74\'',
-      },
-    });
-
-    await this.db.matchScore.create({
-      data: {
-        matchId: matchFootball.id,
-        teamAScore: '2',
-        teamBScore: '1',
-        statusText: 'Real Madrid lead 2-1 (74 mins)',
-      },
-    });
-
-    this.logger.log('Sports data seeded successfully!');
-  }
-
-  async ensureLiveMatches() {
-    try {
-      const matchesToUpdate = await this.db.match.findMany({
-        where: {
-          OR: [
-            { status: 'LIVE' },
-            { resultSummary: { contains: '19:30', mode: 'insensitive' } },
-            { resultSummary: { contains: 'today', mode: 'insensitive' } },
-          ],
-        },
-      });
-
-      for (const m of matchesToUpdate) {
-        await this.db.match.update({
-          where: { id: m.id },
-          data: {
-            status: 'LIVE',
-            resultSummary: '2nd Innings - South Africa need 31 runs in 28 balls',
-          },
-        });
-
-        await this.db.matchScore.upsert({
-          where: { matchId: m.id },
-          create: {
-            matchId: m.id,
-            teamAScore: '178/4',
-            teamAOvers: '20.0',
-            teamBScore: '148/3',
-            teamBOvers: '15.2',
-            currentInnings: 2,
-            currentRunRate: 9.67,
-            requiredRunRate: 6.42,
-            targetRuns: 179,
-            statusText: 'South Africa need 31 runs in 28 balls (15.2 ov)',
-            activeBatsman: 'A. Markram 54* (32), D. Miller 32* (18)',
-            activeBowler: 'J. Archer 1/28 (3.2)',
-            recentOvers: '1 4 1 6 2 1',
-          },
-          update: {
-            teamAScore: '178/4',
-            teamAOvers: '20.0',
-            teamBScore: '148/3',
-            teamBOvers: '15.2',
-            currentInnings: 2,
-            currentRunRate: 9.67,
-            requiredRunRate: 6.42,
-            targetRuns: 179,
-            statusText: 'South Africa need 31 runs in 28 balls (15.2 ov)',
-            activeBatsman: 'A. Markram 54* (32), D. Miller 32* (18)',
-            activeBowler: 'J. Archer 1/28 (3.2)',
-            recentOvers: '1 4 1 6 2 1',
-          },
-        });
-      }
-    } catch (err) {
-      this.logger.error('Failed promoting matches to live', err);
-    }
+    this.logger.log('Base sports categories initialized successfully.');
   }
 }
 

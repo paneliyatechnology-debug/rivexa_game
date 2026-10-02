@@ -105,6 +105,138 @@ export interface ProviderPlayerDetail extends ProviderPlayer {
   playerImg?: string;
 }
 
+// ─────────────────────────────────────────────
+// NORMALIZED INTERNAL DATA MODEL INTERFACES
+// ─────────────────────────────────────────────
+
+export interface NormalizedPlayer {
+  providerPlayerId: string;
+  name: string;
+  shortName?: string;
+  role?: string;
+  image?: string;
+  teamId?: string;
+  country?: string;
+}
+
+export interface NormalizedTeam {
+  providerTeamId: string;
+  name: string;
+  shortName?: string;
+  flagCode?: string;
+  logoUrl?: string;
+  country?: string;
+}
+
+export interface NormalizedScore {
+  teamAScore?: string;
+  teamBScore?: string;
+  teamAOvers?: string;
+  teamBOvers?: string;
+  currentInnings?: number;
+  currentRunRate?: number;
+  requiredRunRate?: number;
+  targetRuns?: number;
+  statusText?: string;
+  activeBatsman?: string;
+  activeBowler?: string;
+  recentOvers?: string;
+}
+
+export interface NormalizedBatsman {
+  batsmanId?: string;
+  batsmanName: string;
+  dismissal?: string;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  strikeRate: number;
+  isCaptain?: boolean;
+  isWicketKeeper?: boolean;
+}
+
+export interface NormalizedBowler {
+  bowlerId?: string;
+  bowlerName: string;
+  overs: string;
+  maidens: number;
+  runsConceded: number;
+  wickets: number;
+  economy: number;
+}
+
+export interface NormalizedInnings {
+  inningsName: string;
+  teamName: string;
+  totalRuns: number;
+  wickets: number;
+  overs: string;
+  batting: NormalizedBatsman[];
+  bowling: NormalizedBowler[];
+  extras?: {
+    wides?: number;
+    noBalls?: number;
+    byes?: number;
+    legByes?: number;
+    total?: number;
+  };
+  fallOfWickets?: Array<{
+    wicketNumber: number;
+    score: number;
+    overs: string;
+    batsmanName: string;
+  }>;
+}
+
+export interface NormalizedBall {
+  matchId: string;
+  overNumber: number;
+  ballNumber: number;
+  runs: number;
+  event: string;
+  batsman?: string;
+  bowler?: string;
+  wicketInfo?: string;
+}
+
+export interface NormalizedCommentary {
+  matchId: string;
+  overNumber: number;
+  ballNumber: number;
+  runs: number;
+  event: string;
+  bowler?: string;
+  batsman?: string;
+  description: string;
+}
+
+export interface NormalizedMatchResult {
+  winnerProviderTeamId?: string;
+  winnerName?: string;
+  resultSummary: string;
+  status: 'UPCOMING' | 'LIVE' | 'COMPLETED' | 'ABANDONED' | 'CANCELLED';
+}
+
+export interface NormalizedMatch {
+  providerMatchId: string;
+  competitionName?: string;
+  competitionSlug?: string;
+  teamA: NormalizedTeam;
+  teamB: NormalizedTeam;
+  venue?: string;
+  matchType?: string;
+  status: 'UPCOMING' | 'LIVE' | 'COMPLETED' | 'ABANDONED' | 'CANCELLED';
+  startTime?: Date;
+  score?: NormalizedScore;
+  resultSummary?: string;
+  scorecard?: {
+    firstInnings?: NormalizedInnings;
+    secondInnings?: NormalizedInnings;
+  };
+  commentaries?: NormalizedCommentary[];
+}
+
 export interface ICricketDataProvider {
   readonly providerName: string;
   getCapabilities(): ProviderCapabilityRegistry;

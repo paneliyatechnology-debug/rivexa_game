@@ -68,19 +68,41 @@ export class SportsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   broadcastScoreUpdate(matchId: string, scoreData: any) {
     if (!this.server) return;
-    this.server.to(`match_${matchId}`).emit('cricket.score.updated', scoreData);
-    this.server.to('sports_live_matches').emit('cricket.score.updated', scoreData);
+    const payload = {
+      matchId,
+      score: scoreData,
+      ...(typeof scoreData === 'object' ? scoreData : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.server.to(`match_${matchId}`).emit('cricket.score.updated', payload);
+    this.server.to('sports_live_matches').emit('cricket.score.updated', payload);
+    this.server.emit('cricket.score.updated', payload);
   }
 
   broadcastBallCompleted(matchId: string, ballData: any) {
     if (!this.server) return;
-    this.server.to(`match_${matchId}`).emit('cricket.ball.completed', ballData);
-    this.server.to('sports_live_matches').emit('cricket.ball.completed', ballData);
+    const payload = {
+      matchId,
+      ball: ballData,
+      commentary: ballData,
+      ...(typeof ballData === 'object' ? ballData : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.server.to(`match_${matchId}`).emit('cricket.ball.completed', payload);
+    this.server.to('sports_live_matches').emit('cricket.ball.completed', payload);
+    this.server.emit('cricket.ball.completed', payload);
   }
 
   broadcastMatchCompleted(matchId: string, matchData: any) {
     if (!this.server) return;
-    this.server.to(`match_${matchId}`).emit('cricket.match.completed', matchData);
-    this.server.to('sports_live_matches').emit('cricket.match.completed', matchData);
+    const payload = {
+      matchId,
+      match: matchData,
+      ...(typeof matchData === 'object' ? matchData : {}),
+      updatedAt: new Date().toISOString(),
+    };
+    this.server.to(`match_${matchId}`).emit('cricket.match.completed', payload);
+    this.server.to('sports_live_matches').emit('cricket.match.completed', payload);
+    this.server.emit('cricket.match.completed', payload);
   }
 }

@@ -11,17 +11,28 @@ export class SportsController {
     return { success: true, statusCode: 200, data: sports };
   }
 
-  @Get(':sportId')
-  async getSport(@Param('sportId') sportId: string) {
-    const sport = await this.sportsService.getSportBySlug(sportId);
-    if (!sport) throw new NotFoundException('Sport category not found');
-    return { success: true, statusCode: 200, data: sport };
-  }
-
   @Get(':sportId/competitions')
   async getCompetitions(@Param('sportId') sportId: string) {
     const competitions = await this.sportsService.getCompetitions(sportId);
     return { success: true, statusCode: 200, data: competitions };
+  }
+
+  @Get(':sportId/matches/all')
+  async getAllMatchesGrouped(@Param('sportId') sportId: string) {
+    const grouped = await this.sportsService.getAllMatchesGroupedByCompetition(sportId);
+    return { success: true, statusCode: 200, data: grouped };
+  }
+
+  @Get(':sportId/matches/live')
+  async getLiveMatches(@Param('sportId') sportId: string) {
+    const grouped = await this.sportsService.getLiveMatchesGroupedByCompetition(sportId);
+    return { success: true, statusCode: 200, data: grouped };
+  }
+
+  @Get(':sportId/matches/upcoming')
+  async getUpcomingMatches(@Param('sportId') sportId: string) {
+    const grouped = await this.sportsService.getUpcomingMatchesGroupedByCompetition(sportId);
+    return { success: true, statusCode: 200, data: grouped };
   }
 
   @Get(':sportId/matches')
@@ -40,16 +51,11 @@ export class SportsController {
     return { success: true, statusCode: 200, data: matches };
   }
 
-  @Get(':sportId/matches/live')
-  async getLiveMatches(@Param('sportId') sportId: string) {
-    const grouped = await this.sportsService.getLiveMatchesGroupedByCompetition(sportId);
-    return { success: true, statusCode: 200, data: grouped };
-  }
-
-  @Get(':sportId/matches/upcoming')
-  async getUpcomingMatches(@Param('sportId') sportId: string) {
-    const grouped = await this.sportsService.getUpcomingMatchesGroupedByCompetition(sportId);
-    return { success: true, statusCode: 200, data: grouped };
+  @Get(':sportId')
+  async getSport(@Param('sportId') sportId: string) {
+    const sport = await this.sportsService.getSportBySlug(sportId);
+    if (!sport) throw new NotFoundException('Sport category not found');
+    return { success: true, statusCode: 200, data: sport };
   }
 }
 

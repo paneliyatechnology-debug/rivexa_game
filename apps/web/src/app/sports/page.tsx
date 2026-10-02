@@ -26,15 +26,15 @@ export default function SportsHomePage() {
   // Fetch Sports list
   const fetchSports = useCallback(async () => {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/sports`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data && Array.isArray(json.data)) {
+      const res = await fetch(`${getApiBaseUrl()}/sports`).catch(() => null);
+      if (res && res.ok) {
+        const json = await res.json().catch(() => null);
+        if (json && json.data && Array.isArray(json.data)) {
           setSports(json.data);
         }
       }
-    } catch (err) {
-      console.error('Error fetching sports:', err);
+    } catch {
+      // Graceful fallback for offline backend
     }
   }, []);
 
@@ -43,32 +43,32 @@ export default function SportsHomePage() {
     setIsLoading(true);
     setError(null);
     try {
-      let url = `${getApiBaseUrl()}/sports/${activeSportSlug}/matches/${activeTab === 'all' ? 'live' : activeTab}`;
-      let res = await fetch(url);
+      const endpoint = activeTab === 'all' ? 'all' : activeTab;
+      const res = await fetch(`${getApiBaseUrl()}/sports/${activeSportSlug}/matches/${endpoint}`);
 
-      if (!res.ok || activeTab === 'all') {
-        // Fetch both live and upcoming if tab is 'all'
-        const liveRes = await fetch(`${getApiBaseUrl()}/sports/${activeSportSlug}/matches/live`);
-        const upcomingRes = await fetch(`${getApiBaseUrl()}/sports/${activeSportSlug}/matches/upcoming`);
-
-        const liveData = liveRes.ok ? (await liveRes.json()).data || [] : [];
-        const upcomingData = upcomingRes.ok ? (await upcomingRes.json()).data || [] : [];
-
-        // Merge competitions
-        const mergedMap = new Map<string, ICompetition>();
-        [...liveData, ...upcomingData].forEach((comp: ICompetition) => {
-          if (!mergedMap.has(comp.id)) {
-            mergedMap.set(comp.id, { ...comp, matches: [...(comp.matches || [])] });
-          } else {
-            const existing = mergedMap.get(comp.id)!;
-            existing.matches = [...(existing.matches || []), ...(comp.matches || [])];
-          }
-        });
-
-        setCompetitions(Array.from(mergedMap.values()));
-      } else {
+      if (res.ok) {
         const json = await res.json();
         setCompetitions(json.data || []);
+      } else {
+        // Fallback fetch all matches
+        const fallbackRes = await fetch(`${getApiBaseUrl()}/sports/${activeSportSlug}/matches`);
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          const rawMatches = fallbackData.data || [];
+          if (rawMatches.length > 0) {
+            setCompetitions([
+              {
+                id: 'all-matches',
+                name: 'All Cricket Matches',
+                matches: rawMatches,
+              } as ICompetition,
+            ]);
+          } else {
+            setCompetitions([]);
+          }
+        } else {
+          setCompetitions([]);
+        }
       }
     } catch (err) {
       setError('Failed to connect to sports data service. Retrying...');
@@ -87,16 +87,23 @@ export default function SportsHomePage() {
 
   // Handle real-time WebSocket live score updates smoothly
   useEffect(() => {
-    if (!liveUpdate || !liveUpdate.matchId || !liveUpdate.score) return;
+    if (!liveUpdate) return;
+    const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
+    const newScore = liveUpdate.score || liveUpdate;
+
+    if (!targetMatchId) return;
 
     setCompetitions((prevComps) =>
       prevComps.map((comp) => ({
         ...comp,
         matches: (comp.matches || []).map((m: IMatch) => {
-          if (m.id === liveUpdate.matchId) {
+          if (m.id === targetMatchId) {
             return {
               ...m,
-              score: liveUpdate.score,
+              score: {
+                ...m.score,
+                ...newScore,
+              },
             };
           }
           return m;
@@ -105,10 +112,10 @@ export default function SportsHomePage() {
     );
   }, [liveUpdate]);
 
-  // Calculate overall dynamic match counts
+  // Calculate overall dynamic match counts from API
   const currentSport = sports.find((s) => s.slug === activeSportSlug);
-  const liveCount = currentSport?.matchCount?.live || 2;
-  const upcomingCount = currentSport?.matchCount?.upcoming || 3;
+  const liveCount = currentSport?.matchCount?.live ?? 0;
+  const upcomingCount = currentSport?.matchCount?.upcoming ?? 0;
 
   return (
     <div className="w-full min-h-screen bg-[#050B20] text-[#F5F7FF] flex flex-col font-sans pt-[84px]">

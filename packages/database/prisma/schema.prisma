@@ -44,6 +44,24 @@ enum WithdrawalStatus {
   PROCESSED
 }
 
+enum HiloChoice {
+  UP
+  DOWN
+}
+
+enum HiloResult {
+  WIN
+  LOSS
+  PENDING
+}
+
+enum HiloStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+
 model User {
   id                      String                   @id @default(uuid()) @db.Uuid
   name                    String?
@@ -83,6 +101,8 @@ model User {
   depositVerifications    DepositVerification[]
   notifications           Notification[]
   testBets                TestBet[]
+  hiloRounds              HiloRound[]
+  hiloBets                HiloBet[]
   tenantPlayers           TenantPlayer[]
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
@@ -570,6 +590,55 @@ model CoinFlipBet {
 
   @@map("coin_flip_bets")
 }
+
+model HiloRound {
+  id            String      @id @default(uuid()) @db.Uuid
+  roundId       String      @unique @map("round_id")
+  userId        String      @map("user_id") @db.Uuid
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentCard   String      @map("current_card")
+  currentRank   Int         @map("current_rank")
+  currentSuit   String      @map("current_suit")
+  playerChoice  HiloChoice? @map("player_choice")
+  betAmount     Decimal     @map("bet_amount") @db.Decimal(16, 4)
+  nextCard      String?     @map("next_card")
+  nextRank      Int?        @map("next_rank")
+  nextSuit      String?     @map("next_suit")
+  result        HiloResult  @default(PENDING)
+  profit        Decimal     @default(0.00) @db.Decimal(16, 4)
+  payout        Decimal     @default(0.00) @db.Decimal(16, 4)
+  balanceBefore Decimal     @map("balance_before") @db.Decimal(16, 4)
+  balanceAfter  Decimal?    @map("balance_after") @db.Decimal(16, 4)
+  status        HiloStatus  @default(PENDING)
+  createdAt     DateTime    @default(now()) @map("created_at")
+  completedAt   DateTime?   @map("completed_at")
+
+  bets          HiloBet[]
+
+  @@index([userId])
+  @@index([roundId])
+  @@index([createdAt])
+  @@index([userId, createdAt])
+  @@map("hilo_rounds")
+}
+
+model HiloBet {
+  id        String     @id @default(uuid()) @db.Uuid
+  roundId   String     @map("round_id") @db.Uuid
+  round     HiloRound  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  userId    String     @map("user_id") @db.Uuid
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  betAmount Decimal    @map("bet_amount") @db.Decimal(16, 4)
+  choice    HiloChoice
+  status    BetStatus  @default(PENDING)
+  createdAt DateTime   @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([roundId])
+  @@index([createdAt])
+  @@map("hilo_bets")
+}
+
 
 // ─────────────────────────────────────────────
 // SPORTS PLATFORM MODELS

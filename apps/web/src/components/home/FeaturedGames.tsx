@@ -118,6 +118,15 @@ const GAME_META: Record<
     ctaStyle: 'bg-gradient-to-r from-[#FF3FA4] to-[#873BFF] text-white font-black',
     glowHex: '#FF3FA4',
   },
+  hilo: {
+    svgKey: 'more-games',
+    gradient: 'from-[#0A1638] via-[#0D1B4D] to-[#050B20]',
+    border: 'border-[#00D9FF]/45',
+    shadow: 'shadow-[#00D9FF]/15',
+    badgeStyle: 'bg-gradient-to-r from-[#00D9FF] to-[#287BFF] text-[#04101F] font-black',
+    ctaStyle: 'bg-gradient-to-r from-[#00D9FF] to-[#287BFF] text-[#04101F] font-black',
+    glowHex: '#00D9FF',
+  },
 };
 
 const DEFAULT_GAME_META = {
@@ -143,6 +152,7 @@ const GAME_DESC: Record<string, string> = {
   'andar-bahar': 'Traditional Game',
   'coin-flip': 'Win Big',
   pushparani: 'Traditional Game',
+  hilo: 'Higher or Lower Card',
 };
 
 interface FeaturedGamesProps {

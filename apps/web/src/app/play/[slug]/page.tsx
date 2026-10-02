@@ -13,6 +13,7 @@ import { PushparaniGame } from '@/components/PushparaniGame';
 import CoinFlipGame from '@/components/CoinFlipGame';
 import { DiceGame } from '@/components/DiceGame';
 import { MinesGame } from '@/components/MinesGame';
+import HiloGame from '@/components/HiloGame';
 import { getApiBaseUrl } from '@/lib/config';
 import ValidationErrorModal, { ValidationErrorType } from '@/components/ValidationErrorModal';
 import { useAuth } from '@/context/AuthContext';
@@ -22,6 +23,10 @@ export default function PlayGamePage() {
   const slug = (params.slug as string) || 'crash';
 
   const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
+
+  if (slug === 'hilo') {
+    return <HiloGame />;
+  }
 
   if (slug === 'coin-flip' || slug === 'flipcoin') {
     return <CoinFlipGame />;

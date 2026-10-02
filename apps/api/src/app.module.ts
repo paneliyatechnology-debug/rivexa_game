@@ -14,6 +14,7 @@ import { JetModule } from './games/jet/jet.module.js';
 import { AndarBaharModule } from './games/andar-bahar/andar-bahar.module.js';
 import { PushparaniModule } from './games/pushparani/pushparani.module.js';
 import { CoinFlipModule } from './games/coin-flip/coin-flip.module.js';
+import { HiloModule } from './games/hilo/hilo.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { TasksModule } from './tasks/tasks.module.js';
@@ -39,6 +40,7 @@ import { TenantModule } from './tenant/tenant.module.js';
     AndarBaharModule,
     PushparaniModule,
     CoinFlipModule,
+    HiloModule,
     AdminModule,
     NotificationsModule,
     TasksModule,

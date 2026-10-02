@@ -5,7 +5,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "prisma generate && tsc && mkdir -p dist/generated && cp -r src/generated/* dist/generated/",
+    "build": "prisma generate && tsc && node -e \"const fs=require('fs');fs.mkdirSync('dist/generated',{recursive:true});fs.cpSync('src/generated','dist/generated',{recursive:true});\"",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev"
   },

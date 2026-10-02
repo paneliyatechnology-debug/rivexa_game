@@ -56,6 +56,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get pushparaniRound(): any { return (this.client as any).pushparaniRound; }
   get pushparaniBet(): any { return (this.client as any).pushparaniBet; }
   get coinFlipBet(): any { return (this.client as any).coinFlipBet; }
+  get hiloRound(): any { return (this.client as any).hiloRound; }
+  get hiloBet(): any { return (this.client as any).hiloBet; }
   get notification(): any { return this.client.notification; }
   get sport(): any { return (this.client as any).sport; }
   get competition(): any { return (this.client as any).competition; }

@@ -938,6 +938,20 @@ export class AdminService {
       rtpPercentage: 98,
       isActive: true,
     },
+    {
+      id: 'hilo',
+      name: 'HILO',
+      slug: 'hilo',
+      minBet: 10,
+      maxBet: 50000,
+      description: 'Predict higher or lower cards and win 2.0x multiplier!',
+      badge: '2.0X',
+      badgeClass: 'bg-gradient-to-r from-cyan-400 to-blue-600 text-slate-950 font-black',
+      icon: 'bi-suit-spade-fill',
+      iconColor: 'text-cyan-400',
+      rtpPercentage: 96,
+      isActive: true,
+    },
   ];
 
   async getGameSettings() {

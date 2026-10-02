@@ -24,6 +24,7 @@ const GAMES_FALLBACK = [
   { id: 'andar-bahar', name: 'Andar Bahar', slug: 'andar-bahar', minBet: 10, description: 'Predict matching joker card landing side...', badge: 'HOT' },
   { id: 'pushparani', name: 'Pushparani', slug: 'pushparani', minBet: 10, description: 'Pushpa Truck Crash - Cash out before obstacle hit!', badge: 'NEW' },
   { id: 'coin-flip', name: 'Coin Flip', slug: 'coin-flip', minBet: 10, description: 'Flip coin - heads or tails. Win 1.96x!', badge: '1.96X' },
+  { id: 'hilo', name: 'HILO', slug: 'hilo', minBet: 10, description: 'Card prediction: Higher or Lower? Win 2.0x!', badge: 'NEW' },
 ];
 
 export default function HomePage() {

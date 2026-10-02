@@ -84,7 +84,10 @@ export default function RewardsHubPage() {
             <h2 className="text-sm font-black text-white flex items-center gap-2">
               <Award className="w-4 h-4 text-[#00E5A0]" /> Reward Tasks
             </h2>
-            <span className="text-xs text-[#7183A8] font-bold">Earn Free Coins</span>
+            <Link href="/tasks" className="text-xs text-[#00D9FF] hover:text-white font-bold flex items-center gap-1 transition-colors">
+              <span>View All Tasks</span>
+              <span>➔</span>
+            </Link>
           </div>
 
           <div className="space-y-2.5">

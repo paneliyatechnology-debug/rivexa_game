@@ -36,7 +36,11 @@ export class CricketDataService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    await this.ensureProviderRegistered(this.activeProviderName);
+    try {
+      await this.ensureProviderRegistered(this.activeProviderName);
+    } catch (err: any) {
+      this.logger.warn(`Failed ensuring cricket provider: ${err.message}`);
+    }
   }
 
   get activeProviderName(): string {

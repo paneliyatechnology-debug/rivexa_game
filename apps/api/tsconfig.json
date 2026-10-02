@@ -18,15 +18,25 @@
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false,
-    "types": ["node"],
-    "ignoreDeprecations": "5.0",
-    "baseUrl": ".",
+    "types": [
+      "node"
+    ],
     "paths": {
-      "@gaming-platform/auth": ["../../packages/auth/dist/index.d.ts"],
-      "@gaming-platform/types": ["../../packages/types/dist/index.d.ts"],
-      "@gaming-platform/database": ["../../packages/database/dist/index.d.ts"],
-      "@prisma/client": ["../../packages/database/src/generated/client/index.d.ts"]
+      "@gaming-platform/auth": [
+        "../../packages/auth/dist/index.d.ts"
+      ],
+      "@gaming-platform/types": [
+        "../../packages/types/dist/index.d.ts"
+      ],
+      "@gaming-platform/database": [
+        "../../packages/database/dist/index.d.ts"
+      ],
+      "@prisma/client": [
+        "../../packages/database/src/generated/client/index.d.ts"
+      ]
     }
   },
-  "include": ["src/**/*"]
+  "include": [
+    "src/**/*"
+  ]
 }

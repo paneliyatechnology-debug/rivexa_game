@@ -23,6 +23,24 @@ export class TasksService {
     const totalDeposits = user.depositRequests?.filter((d: any) => d.status === 'APPROVED')?.length || 0;
     const referralCount = user.downlines?.length || 0;
 
+    const wallet = await this.db.wallet.findUnique({
+      where: { userId },
+      include: {
+        transactions: {
+          where: { type: 'bonus' },
+          select: { referenceType: true },
+        },
+      },
+    });
+
+    const claimedRefTypes = new Set(
+      wallet?.transactions?.map((t: any) => t.referenceType).filter(Boolean) || [],
+    );
+
+    const isFirstDepositClaimed = claimedRefTypes.has('task_first_deposit');
+    const isPlay10Claimed = claimedRefTypes.has('task_play_10_games');
+    const isInviteClaimed = claimedRefTypes.has('task_invite_friend');
+
     const tasks = [
       {
         id: 'welcome_reg',
@@ -42,7 +60,7 @@ export class TasksService {
         progress: Math.min(totalDeposits, 1),
         maxProgress: 1,
         isCompleted: totalDeposits >= 1,
-        isClaimed: false,
+        isClaimed: isFirstDepositClaimed,
       },
       {
         id: 'play_10_games',
@@ -52,7 +70,7 @@ export class TasksService {
         progress: Math.min(totalBets, 10),
         maxProgress: 10,
         isCompleted: totalBets >= 10,
-        isClaimed: false,
+        isClaimed: isPlay10Claimed,
       },
       {
         id: 'invite_friend',
@@ -62,7 +80,7 @@ export class TasksService {
         progress: Math.min(referralCount, 1),
         maxProgress: 1,
         isCompleted: referralCount >= 1,
-        isClaimed: false,
+        isClaimed: isInviteClaimed,
       },
     ];
 

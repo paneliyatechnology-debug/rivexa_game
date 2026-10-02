@@ -52,9 +52,19 @@ export class WalletController {
     return this.walletService.claimDailyReward(userId);
   }
 
+  @Get('daily-reward-status')
+  async getDailyRewardStatus(@Query('userId') userId: string) {
+    return this.walletService.getDailyRewardStatus(userId);
+  }
+
   @Get('history')
   async getUserHistory(@Query('userId') userId: string) {
     return this.walletService.getUserHistory(userId);
+  }
+
+  @Get('rewards-history')
+  async getRewardsHistory(@Query('userId') userId: string) {
+    return this.walletService.getRewardsHistory(userId);
   }
 
   @Get('deposit-details/:depositId')

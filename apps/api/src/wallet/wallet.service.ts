@@ -337,6 +337,48 @@ export class WalletService {
     };
   }
 
+  async getDailyRewardStatus(userId: string) {
+    const activeUserId = this.toValidUserId(userId);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const existingToday = await this.db.dailyReward.findFirst({
+      where: {
+        userId: activeUserId,
+        claimedAt: { gte: today },
+      },
+    });
+
+    const totalClaimed = await this.db.dailyReward.count({ where: { userId: activeUserId } });
+    const currentDay = existingToday ? ((totalClaimed - 1) % 7) + 1 : (totalClaimed % 7) + 1;
+
+    const totalRewardsAggregate = await this.db.dailyReward.aggregate({
+      where: { userId: activeUserId },
+      _sum: { amount: true },
+    });
+    const totalRewards = Number(totalRewardsAggregate._sum?.amount || 0);
+
+    // Tomorrow 00:00:00
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const msUntilTomorrow = Math.max(0, tomorrow.getTime() - Date.now());
+
+    // Claimed days in current cycle
+    const claimedDaysInCycle = existingToday ? currentDay : currentDay - 1;
+
+    return {
+      claimedToday: !!existingToday,
+      currentDay,
+      claimedDaysInCycle,
+      totalClaimed,
+      currentStreak: totalClaimed,
+      bestStreak: Math.max(totalClaimed, 7),
+      totalRewards,
+      msUntilTomorrow,
+      lastClaimedAt: existingToday?.claimedAt || null,
+    };
+  }
+
   async getUserHistory(userId: string) {
     const activeUserId = this.toValidUserId(userId);
     const wallet = await this.db.wallet.findUnique({ where: { userId: activeUserId } });
@@ -385,6 +427,207 @@ export class WalletService {
     return {
       ...depositRequest,
       isExpired,
+    };
+  }
+
+  async getRewardsHistory(userId: string) {
+    const activeUserId = this.toValidUserId(userId);
+    const user = await this.db.user.findUnique({
+      where: { id: activeUserId },
+      include: {
+        gameBets: { select: { id: true } },
+        depositRequests: { where: { status: 'APPROVED' }, select: { id: true } },
+        downlines: { select: { id: true } },
+      },
+    });
+
+    const wallet = await this.db.wallet.findUnique({ where: { userId: activeUserId } });
+
+    const bonusTransactions = wallet
+      ? await this.db.walletTransaction.findMany({
+          where: { walletId: wallet.id, type: 'bonus' },
+          orderBy: { createdAt: 'desc' },
+          take: 100,
+        })
+      : [];
+
+    const dailyRewards = await this.db.dailyReward.findMany({
+      where: { userId: activeUserId },
+      orderBy: { claimedAt: 'desc' },
+      take: 100,
+    });
+
+    const commissions = await this.db.commission.findMany({
+      where: { userId: activeUserId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        sourceUser: { select: { name: true, phone: true } },
+      },
+    });
+
+    // Build unified live records list
+    const records: any[] = [];
+
+    // 1. Welcome Registration Bonus
+    if (user) {
+      const regDate = new Date(user.createdAt);
+      records.push({
+        id: `welcome-${user.id}`,
+        transactionId: `RW-${regDate.getFullYear()}${String(regDate.getMonth() + 1).padStart(2, '0')}${String(regDate.getDate()).padStart(2, '0')}-0001`,
+        name: 'Welcome Registration Bonus',
+        description: 'Complete registration and set up your account.',
+        type: 'Task Reward',
+        amount: 1000,
+        status: 'Claimed',
+        date: regDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: regDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+        rawDate: regDate.toISOString(),
+        iconType: 'gift',
+      });
+    }
+
+    // 2. Bonus Transactions (tasks claimed, daily rewards, coupon redemptions, etc.)
+    for (const tx of bonusTransactions) {
+      const d = new Date(tx.createdAt);
+      const isDaily = tx.referenceType === 'daily_reward';
+      const isFirstDeposit = tx.referenceType === 'task_first_deposit';
+      const isTask = tx.referenceType?.startsWith('task_');
+      const isCoupon = tx.referenceType?.startsWith('coupon_');
+
+      let name = (tx.metadata as any)?.title || 'Bonus Reward';
+      let description = (tx.metadata as any)?.description || 'Reward credited directly to wallet balance.';
+      let type = 'Deposit Bonus';
+      let iconType = 'wallet';
+
+      if (isDaily) {
+        name = 'Daily Streak Day 1';
+        description = 'Consecutive daily check-in streak bonus.';
+        type = 'Daily Bonus';
+        iconType = 'flame';
+      } else if (isFirstDeposit) {
+        name = 'First Deposit Bonus';
+        description = 'Make your first deposit of ₹100 or more.';
+        type = 'Deposit Bonus';
+        iconType = 'wallet';
+      } else if (isTask) {
+        name = (tx.metadata as any)?.title || 'Task Mission Reward';
+        description = 'Completed player mission reward.';
+        type = 'Task Reward';
+        iconType = 'game';
+      } else if (isCoupon) {
+        const code = tx.referenceType ? tx.referenceType.replace('coupon_', '') : 'PROMO';
+        name = `Coupon Reward (${code})`;
+        description = `Secret coupon voucher code "${code}" redeemed.`;
+        type = 'Promotional';
+        iconType = 'promo';
+      }
+
+      records.push({
+        id: tx.id,
+        transactionId: `RW-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${tx.id.substring(0, 4).toUpperCase()}`,
+        name,
+        description,
+        type,
+        amount: Number(tx.amount || 0),
+        status: 'Claimed',
+        date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+        rawDate: d.toISOString(),
+        iconType,
+      });
+    }
+
+    // 3. Referral Commissions
+    for (const comm of commissions) {
+      const d = new Date(comm.createdAt);
+      const friendName = comm.sourceUser?.name || 'Referred Friend';
+      records.push({
+        id: comm.id,
+        transactionId: `RW-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${comm.id.substring(0, 4).toUpperCase()}`,
+        name: `Referral Bonus (${friendName})`,
+        description: `Commission earned from invited player wager (Tier ${comm.level}).`,
+        type: 'Referral Bonus',
+        amount: Number(comm.amount || 0),
+        status: comm.status === 'credited' ? 'Claimed' : 'Pending',
+        date: d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+        time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+        rawDate: d.toISOString(),
+        iconType: 'referral',
+      });
+    }
+
+    // 4. In-progress / Pending Tasks
+    if (user) {
+      const totalBets = user.gameBets?.length || 0;
+      const referralCount = user.downlines?.length || 0;
+      const claimedRefTypes = new Set(
+        wallet ? bonusTransactions.map((t: any) => t.referenceType).filter(Boolean) : [],
+      );
+
+      // Play 10 Games
+      if (!claimedRefTypes.has('task_play_10_games')) {
+        const now = new Date();
+        records.push({
+          id: `task-pending-play10-${user.id}`,
+          transactionId: `RW-TASK-PLAY10`,
+          name: 'Play 10 Games',
+          description: `Participate in at least 10 games (Progress: ${Math.min(totalBets, 10)}/10).`,
+          type: 'Task Reward',
+          amount: 20,
+          status: 'Pending',
+          date: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          time: 'Active',
+          rawDate: new Date(now.getTime() - 86400000).toISOString(),
+          iconType: 'game',
+        });
+      }
+
+      // Invite Friend
+      if (!claimedRefTypes.has('task_invite_friend')) {
+        const now = new Date();
+        records.push({
+          id: `task-pending-invite-${user.id}`,
+          transactionId: `RW-TASK-INVITE`,
+          name: 'Invite Your First Friend',
+          description: `Share your referral link with friends (Invited: ${referralCount}/1).`,
+          type: 'Referral Bonus',
+          amount: 50,
+          status: 'Pending',
+          date: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          time: 'Active',
+          rawDate: new Date(now.getTime() - 172800000).toISOString(),
+          iconType: 'referral',
+        });
+      }
+    }
+
+    // Sort all records chronologically descending (newest first)
+    records.sort((a, b) => new Date(b.rawDate).getTime() - new Date(a.rawDate).getTime());
+
+    // Live calculated summary metrics
+    const claimedRecords = records.filter((r) => r.status === 'Claimed');
+    const totalEarned = claimedRecords.reduce((sum, r) => sum + r.amount, 0);
+    const taskRewards = claimedRecords
+      .filter((r) => r.type === 'Task Reward')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const bonusRewards = claimedRecords
+      .filter((r) => r.type === 'Daily Bonus' || r.type === 'Deposit Bonus' || r.type === 'Promotional')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const claimedCount = claimedRecords.length;
+
+    return {
+      success: true,
+      records,
+      summary: {
+        totalEarned,
+        taskRewards,
+        bonusRewards,
+        claimedCount,
+      },
+      bonusTransactions,
+      dailyRewards,
+      commissions,
     };
   }
 }

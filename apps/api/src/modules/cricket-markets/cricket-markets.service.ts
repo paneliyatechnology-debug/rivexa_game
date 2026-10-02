@@ -8,7 +8,11 @@ export class CricketMarketsService implements OnModuleInit {
   constructor(private readonly db: DatabaseService) {}
 
   async onModuleInit() {
-    await this.seedDefaultCategories();
+    try {
+      await this.seedDefaultCategories();
+    } catch (err: any) {
+      this.logger.warn(`Failed seeding default categories: ${err.message}`);
+    }
   }
 
   private async seedDefaultCategories() {

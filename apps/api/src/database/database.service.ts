@@ -1,16 +1,28 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import '../env.js';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { PrismaClient } from '@gaming-platform/database';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(DatabaseService.name);
   public readonly client = new PrismaClient();
 
   async onModuleInit() {
-    await this.client.$connect();
+    try {
+      await this.client.$connect();
+      this.logger.log('Database connected successfully');
+    } catch (error: any) {
+      this.logger.warn(`Database connection failed: ${error.message}`);
+      this.logger.warn('Please check DATABASE_URL in .env to ensure PostgreSQL credentials are correct.');
+    }
   }
 
   async onModuleDestroy() {
-    await this.client.$disconnect();
+    try {
+      await this.client.$disconnect();
+    } catch {
+      // ignore disconnect errors
+    }
   }
 
   get user(): any { return this.client.user; }

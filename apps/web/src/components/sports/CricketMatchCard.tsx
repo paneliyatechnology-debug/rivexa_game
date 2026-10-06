@@ -44,7 +44,7 @@ export function CricketMatchCard({ match }: { match: IMatch }) {
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <TeamIdentity team={match.teamA} size="md" />
-              {score?.teamAScore && (
+            {isLive && score?.teamAScore && (
                 <span className="font-mono text-base font-black text-cyan-300 tracking-wider drop-shadow-[0_0_8px_rgba(6,182,212,0.4)]">
                   {score.teamAScore}{' '}
                   {score.teamAOvers && (
@@ -56,7 +56,7 @@ export function CricketMatchCard({ match }: { match: IMatch }) {
 
             <div className="flex items-center justify-between gap-3">
               <TeamIdentity team={match.teamB} size="md" />
-              {score?.teamBScore && (
+              {isLive && score?.teamBScore && (
                 <span className="font-mono text-base font-black text-cyan-300 tracking-wider drop-shadow-[0_0_8px_rgba(6,182,212,0.4)]">
                   {score.teamBScore}{' '}
                   {score.teamBOvers && (
@@ -92,14 +92,14 @@ export function CricketMatchCard({ match }: { match: IMatch }) {
             </span>
           </div>
 
-          {score?.statusText && (
+          {isLive && score?.statusText && (
             <div className="mt-1 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-bold flex items-center gap-1.5 shadow-[0_0_12px_rgba(52,211,153,0.2)]">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.9)]"></span>
               <span className="truncate">{score.statusText}</span>
             </div>
           )}
 
-          {match.resultSummary && !score?.statusText && (
+          {match.status === 'COMPLETED' && match.resultSummary && (
             <div className="mt-1 px-3 py-1.5 rounded-xl bg-[#101F42] text-slate-300 text-xs font-medium">
               {match.resultSummary}
             </div>
@@ -107,44 +107,69 @@ export function CricketMatchCard({ match }: { match: IMatch }) {
         </div>
 
         {/* RIGHT: Match Odds & Stats Tile */}
-        <div className="lg:w-64 shrink-0 flex flex-col justify-between gap-2.5 bg-[#08142E] p-3 rounded-xl border border-cyan-500/20 shadow-[0_0_15px_rgba(0,0,0,0.3)] group-hover:border-cyan-400/40">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-300 font-bold flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
-              Match Odds (Stats)
-            </span>
-            <span className="text-cyan-300 font-extrabold text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30">
-              Stats Model
-            </span>
-          </div>
+        {(() => {
+          let winProbA = 50;
+          let winProbB = 50;
+          if (score?.teamAScore || score?.teamBScore) {
+            const runsA = parseInt(score?.teamAScore?.split('/')[0] || '0', 10);
+            const wicketsA = parseInt(score?.teamAScore?.split('/')[1] || '0', 10);
+            const runsB = parseInt(score?.teamBScore?.split('/')[0] || '0', 10);
+            const wicketsB = parseInt(score?.teamBScore?.split('/')[1] || '0', 10);
 
-          {/* Odds & Probability Bar */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-[11px] font-extrabold text-white">
-              <span className="flex items-center gap-1">
-                <span className="text-slate-300">{match.teamA?.shortName}:</span>
-                <span className="text-cyan-300 font-mono text-xs">1.75</span>
-                <span className="text-[10px] text-cyan-400/80">(62%)</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="text-slate-300">{match.teamB?.shortName}:</span>
-                <span className="text-blue-400 font-mono text-xs">2.15</span>
-                <span className="text-[10px] text-blue-400/80">(38%)</span>
-              </span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-[#101C3A] overflow-hidden flex shadow-inner">
-              <div className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_10px_rgba(6,182,212,0.6)]" style={{ width: '62%' }}></div>
-              <div className="h-full bg-blue-600" style={{ width: '38%' }}></div>
-            </div>
-          </div>
+            const diff = (runsA - wicketsA * 8) - (runsB - wicketsB * 8);
+            winProbA = Math.min(92, Math.max(8, Math.round(50 + diff * 0.2)));
+            winProbB = 100 - winProbA;
+          }
+          const oddsA = (100 / winProbA).toFixed(2);
+          const oddsB = (100 / winProbB).toFixed(2);
 
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-[10px] text-slate-400">Back/Lay exchange unavailable</span>
-            <div className="w-7 h-7 rounded-lg bg-[#142654] group-hover:bg-cyan-500 group-hover:text-slate-950 text-white flex items-center justify-center transition-all group-hover:shadow-[0_0_12px_rgba(6,182,212,0.6)]">
-              <ChevronRight className="w-4 h-4" />
+          return (
+            <div className="lg:w-64 shrink-0 flex flex-col justify-between gap-2.5 bg-[#08142E] p-3 rounded-xl border border-cyan-500/20 shadow-[0_0_15px_rgba(0,0,0,0.3)] group-hover:border-cyan-400/40">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-300 font-bold flex items-center gap-1">
+                  <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                  Match Odds (Stats)
+                </span>
+                <span className="text-cyan-300 font-extrabold text-[10px] px-1.5 py-0.5 rounded bg-cyan-500/15 border border-cyan-500/30">
+                  Stats Model
+                </span>
+              </div>
+
+              {/* Odds & Probability Bar */}
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center text-[11px] font-extrabold text-white">
+                  <span className="flex items-center gap-1">
+                    <span className="text-slate-300">{match.teamA?.shortName || match.teamA?.name?.substring(0, 3).toUpperCase()}:</span>
+                    <span className="text-cyan-300 font-mono text-xs">{oddsA}</span>
+                    <span className="text-[10px] text-cyan-400/80">({winProbA}%)</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-slate-300">{match.teamB?.shortName || match.teamB?.name?.substring(0, 3).toUpperCase()}:</span>
+                    <span className="text-blue-400 font-mono text-xs">{oddsB}</span>
+                    <span className="text-[10px] text-blue-400/80">({winProbB}%)</span>
+                  </span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-[#101C3A] overflow-hidden flex shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 shadow-[0_0_10px_rgba(6,182,212,0.6)]"
+                    style={{ width: `${winProbA}%` }}
+                  ></div>
+                  <div
+                    className="h-full bg-blue-600"
+                    style={{ width: `${winProbB}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[10px] text-slate-400">Live Statistical Market</span>
+                <div className="w-7 h-7 rounded-lg bg-[#142654] group-hover:bg-cyan-500 group-hover:text-slate-950 text-white flex items-center justify-center transition-all group-hover:shadow-[0_0_12px_rgba(6,182,212,0.6)]">
+                  <ChevronRight className="w-4 h-4" />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          );
+        })()}
       </div>
     </Link>
   );

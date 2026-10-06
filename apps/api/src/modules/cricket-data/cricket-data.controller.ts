@@ -8,11 +8,12 @@ export class CricketDataController {
   @Get('status')
   async getStatus() {
     const capabilities = this.cricketDataService.getCapabilities();
+    const budget = this.cricketDataService.getBudgetStatus();
     return {
       success: true,
       provider: this.cricketDataService.activeProviderName,
       capabilities,
-      isTestMode: true,
+      budget,
       timestamp: new Date().toISOString(),
     };
   }
@@ -128,13 +129,36 @@ export class CricketDataController {
     };
   }
 
+  @Get('admin/budget')
+  async getBudgetStatus() {
+    const budget = this.cricketDataService.getBudgetStatus();
+    return {
+      success: true,
+      data: budget,
+    };
+  }
+
   @Post('admin/sync')
   async triggerAdminSync() {
-    const result = await this.cricketDataService.triggerAdminSync();
+    const result = await this.cricketDataService.triggerManualSync();
     return {
       success: result.success,
       message: result.message,
       count: result.count,
+      hitsToday: result.hitsToday,
+      budgetRemaining: result.budgetRemaining,
+    };
+  }
+
+  @Post('admin/sync/manual')
+  async triggerManualSync() {
+    const result = await this.cricketDataService.triggerManualSync();
+    return {
+      success: result.success,
+      message: result.message,
+      count: result.count,
+      hitsToday: result.hitsToday,
+      budgetRemaining: result.budgetRemaining,
     };
   }
 
@@ -158,7 +182,14 @@ export class CricketDataController {
 
   @Patch('admin/provider/config')
   async updateProviderConfig(
-    @Body() body: { baseUrl?: string; isActive?: boolean; isTestMode?: boolean }
+    @Body() body: {
+      providerName?: string;
+      baseUrl?: string;
+      isActive?: boolean;
+      isTestMode?: boolean;
+      apiKey?: string;
+      authParamName?: string;
+    }
   ) {
     const updated = await this.cricketDataService.updateProviderConfig(body);
     return {
@@ -167,6 +198,10 @@ export class CricketDataController {
       data: updated,
     };
   }
+
+  @Post('admin/purge-matches')
+  async purgeStaleMatches() {
+    const result = await this.cricketDataService.purgeStaleMatches();
+    return result;
+  }
 }
-
-

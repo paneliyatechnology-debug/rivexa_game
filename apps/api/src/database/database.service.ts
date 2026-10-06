@@ -85,5 +85,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get tenantCreditLog(): any { return (this.client as any).tenantCreditLog; }
   get tenantAuditLog(): any { return (this.client as any).tenantAuditLog; }
   get $transaction(): any { return this.client.$transaction.bind(this.client); }
+  get $queryRaw(): any { return this.client.$queryRaw.bind(this.client); }
 }
 

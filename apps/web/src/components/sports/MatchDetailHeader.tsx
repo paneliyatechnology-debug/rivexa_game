@@ -45,8 +45,8 @@ export function MatchDetailHeader({
             <ChevronRight className="w-3.5 h-3.5 text-white/40" />
             <span className="text-cyan-300 font-extrabold">{match.competition?.name || 'International'}</span>
           </nav>
-          
-          <div className="flex items-center gap-1.5">
+
+          <div className="hidden sm:flex items-center gap-1.5">
             <MatchStatusBadge status={match.status} />
             <span className="text-[10px] sm:text-xs font-extrabold px-2 py-0.5 rounded-full bg-[#1A3578] text-cyan-300 border border-cyan-400/40 shadow-[0_0_8px_rgba(6,182,212,0.3)]">
               {match.matchType || 'T20'}
@@ -65,47 +65,59 @@ export function MatchDetailHeader({
             <Calendar className="w-3.5 h-3.5 text-cyan-400" />
             {formattedDate} • {formattedTime}
           </span>
-          <ConnectionIndicator isConnected={isConnected} />
+          {/* Only shown on desktop — mobile has its own ConnectionIndicator inside sm:hidden section */}
+          <span className="hidden sm:inline-flex">
+            <ConnectionIndicator isConnected={isConnected} />
+          </span>
         </div>
       </div>
 
       {/* MOBILE COMPACT SCORE BAR (Visible on mobile only) */}
-      <div className="sm:hidden space-y-1.5">
-        <div className="flex items-center justify-between gap-1.5 bg-[#0A173A]/90 p-2 rounded-xl border border-cyan-400/30 shadow-inner">
-          {/* Team A Mobile */}
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            <TeamIdentity team={match.teamA} size="sm" showFull={false} />
-            <div className="min-w-0">
-              <div className="text-[11px] font-black text-white truncate leading-tight">{match.teamA?.shortName || match.teamA?.name}</div>
-              <div className="font-mono text-xs font-black text-cyan-300 leading-tight">
+      <div className="sm:hidden space-y-2">
+        {/* Mobile Header Bar */}
+        <div className="flex items-center justify-between text-[11px] text-slate-300 px-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <MatchStatusBadge status={match.status} />
+            <span className="text-cyan-300 font-black truncate max-w-[180px]">
+              {match.competition?.name || 'Cricket Match'}
+            </span>
+          </div>
+          <ConnectionIndicator isConnected={isConnected} />
+        </div>
+
+        <div className="bg-gradient-to-r from-[#142B63] via-[#0F214F] to-[#142B63] border border-cyan-400/40 p-2.5 rounded-xl shadow-lg space-y-2">
+          {/* Team A Row */}
+          <div className="flex items-center justify-between gap-2 bg-[#071333] p-2.5 rounded-lg border border-cyan-500/25">
+            <TeamIdentity team={match.teamA} size="sm" showFull={true} />
+            <div className="text-right shrink-0">
+              <div className="font-mono text-xs font-black text-cyan-300">
                 {score?.teamAScore || 'Yet to bat'}
-                {score?.teamAOvers && <span className="text-[9px] text-slate-300 font-normal ml-1">({score.teamAOvers}ov)</span>}
               </div>
+              {score?.teamAOvers && (
+                <div className="text-[10px] text-slate-400 font-mono">({score.teamAOvers} ov)</div>
+              )}
             </div>
           </div>
 
-          {/* VS / Status Summary Mobile */}
-          <div className="px-1.5 py-1 bg-[#102456] rounded-lg border border-cyan-500/30 text-center shrink-0 max-w-[110px]">
-            {score?.statusText ? (
-              <div className="text-[9px] font-extrabold text-amber-300 leading-tight truncate">{score.statusText}</div>
-            ) : match.resultSummary ? (
-              <div className="text-[9px] font-extrabold text-emerald-300 leading-tight truncate">{match.resultSummary}</div>
-            ) : (
-              <div className="text-[9px] font-bold text-cyan-400">VS</div>
-            )}
-          </div>
-
-          {/* Team B Mobile */}
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end text-right">
-            <div className="min-w-0">
-              <div className="text-[11px] font-black text-white truncate leading-tight">{match.teamB?.shortName || match.teamB?.name}</div>
-              <div className="font-mono text-xs font-black text-cyan-300 leading-tight">
+          {/* Team B Row */}
+          <div className="flex items-center justify-between gap-2 bg-[#071333] p-2.5 rounded-lg border border-cyan-500/25">
+            <TeamIdentity team={match.teamB} size="sm" showFull={true} />
+            <div className="text-right shrink-0">
+              <div className="font-mono text-xs font-black text-cyan-300">
                 {score?.teamBScore || 'Yet to bat'}
-                {score?.teamBOvers && <span className="text-[9px] text-slate-300 font-normal ml-1">({score.teamBOvers}ov)</span>}
               </div>
+              {score?.teamBOvers && (
+                <div className="text-[10px] text-slate-400 font-mono">({score.teamBOvers} ov)</div>
+              )}
             </div>
-            <TeamIdentity team={match.teamB} size="sm" showFull={false} />
           </div>
+
+          {/* Live Status Summary Pill */}
+          {(score?.statusText || match.resultSummary) && (
+            <div className="text-center text-[10px] font-black text-amber-300 bg-[#060D24] py-1.5 px-2.5 rounded-lg border border-amber-400/30 truncate shadow-inner">
+              {score?.statusText || match.resultSummary}
+            </div>
+          )}
         </div>
       </div>
 

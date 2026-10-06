@@ -66,7 +66,7 @@ export class SportsService implements OnModuleInit {
       return;
     }
     for (const key of this.cache.keys()) {
-      if (key.startsWith(prefix)) {
+      if (key.startsWith(prefix) || key.startsWith('match:') || key.startsWith('matches:')) {
         this.cache.delete(key);
       }
     }
@@ -386,20 +386,45 @@ export class SportsService implements OnModuleInit {
 
     if (!match) return null;
 
-    // Calculate dynamic win probabilities from current score metrics
+    // Check if MATCH_WINNER market exists for this match to read admin override or current odds
+    const winnerMarket = await this.db.cricketMarket.findFirst({
+      where: { matchId: match.id, marketType: 'MATCH_WINNER' },
+      include: { selections: { orderBy: { sortOrder: 'asc' } } },
+    });
+
     let winProbA = 50;
     let winProbB = 50;
-    if (match.score) {
+    let oddsA = 2.00;
+    let oddsB = 2.00;
+    let isManual = false;
+
+    if (winnerMarket && winnerMarket.sourceType === 'ADMIN_OVERRIDE' && winnerMarket.selections.length >= 2) {
+      isManual = true;
+      oddsA = Number(winnerMarket.selections[0].backPrice) || 1.75;
+      oddsB = Number(winnerMarket.selections[1].backPrice) || 2.15;
+      winProbA = Math.round(100 / oddsA);
+      winProbB = Math.round(100 / oddsB);
+    } else if (winnerMarket && winnerMarket.selections.length >= 2) {
+      oddsA = Number(winnerMarket.selections[0].backPrice) || 1.75;
+      oddsB = Number(winnerMarket.selections[1].backPrice) || 2.15;
+      winProbA = Math.round(100 / oddsA);
+      winProbB = Math.round(100 / oddsB);
+    } else if (match.score) {
       const crr = match.score.currentRunRate || 8.0;
       const rrr = match.score.requiredRunRate || 8.0;
       const diff = crr - rrr;
       winProbA = Math.min(95, Math.max(5, Math.round(50 + diff * 5)));
       winProbB = 100 - winProbA;
+      oddsA = Number((100 / winProbA).toFixed(2));
+      oddsB = Number((100 / winProbB).toFixed(2));
     }
 
     const statsSummary = {
       winProbabilityTeamA: winProbA,
       winProbabilityTeamB: winProbB,
+      oddsA,
+      oddsB,
+      isManual,
       tossWinner: match.teamA?.name,
       tossDecision: 'Elected to bat first',
     };

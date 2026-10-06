@@ -167,6 +167,70 @@ export class CricketMarketsController {
       data: result,
     };
   }
+
+  @Get('admin/matches/:matchId/odds')
+  async getMatchOddsConfig(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.getMatchOddsConfig(matchId);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Patch('admin/matches/:matchId/odds')
+  async updateMatchOddsConfig(
+    @Param('matchId') matchId: string,
+    @Body() body: { mode?: 'AUTO' | 'MANUAL'; winProbA?: number; winProbB?: number; oddsA?: number; oddsB?: number }
+  ) {
+    const data = await this.marketsService.updateMatchOddsConfig(matchId, body);
+    return {
+      success: true,
+      message: 'Match odds & win percentage configured successfully',
+      data,
+    };
+  }
+
+  @Get('admin/matches/:matchId/analytics')
+  async getMatchAnalytics(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.getMatchAnalytics(matchId);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Patch('admin/matches/:matchId/odd-even')
+  async updateMatchOddEven(
+    @Param('matchId') matchId: string,
+    @Body() body: { enabled?: boolean; rate?: number }
+  ) {
+    const data = await this.marketsService.updateMatchOddEven(matchId, body);
+    return {
+      success: true,
+      message: 'Match-wise Odd/Even settings updated successfully',
+      data,
+    };
+  }
+
+  @Post('admin/matches/:matchId/auto-generate-questions')
+  async autoGenerateMatchQuestions(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.autoGenerateMatchQuestions(matchId);
+    return {
+      success: true,
+      message: 'AI dynamically generated team-wise questions for match successfully!',
+      data,
+    };
+  }
+
+  @Post('admin/matches/:matchId/auto-settle')
+  async autoSettleMatchMarkets(@Param('matchId') matchId: string) {
+    const result = await this.marketsService.autoSettleMatchMarkets(matchId);
+    return {
+      success: true,
+      message: `Auto-settlement completed: ${result.settledCount} bets settled, ${result.lockedCount} markets locked`,
+      data: result,
+    };
+  }
 }
 
 

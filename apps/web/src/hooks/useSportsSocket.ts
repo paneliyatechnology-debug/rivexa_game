@@ -10,14 +10,25 @@ export function useSportsSocket(matchId?: string): {
   ballEvent: any;
   matchCompletedEvent: any;
   socket: Socket | null;
+  connectionVersion: number;
 } {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [connectionVersion, setConnectionVersion] = useState(0);
   const [liveUpdate, setLiveUpdate] = useState<any>(null);
   const [ballEvent, setBallEvent] = useState<any>(null);
   const [matchCompletedEvent, setMatchCompletedEvent] = useState<any>(null);
 
   useEffect(() => {
+    const seenEvents = new Set<string>();
+    const acceptEvent = (eventName: string, payload: any) => {
+      const eventId = [eventName, payload?.eventId || payload?.matchId || 'all', payload?.updatedAt || ''].join(':');
+      if (seenEvents.has(eventId)) return false;
+      seenEvents.add(eventId);
+      if (seenEvents.size > 200) seenEvents.clear();
+      return true;
+    };
+
     // Deriving WebSocket URL from REST API Base URL
     const baseUrl = getApiBaseUrl(); // e.g. http://localhost:4000/api/v1
     const socketHost = baseUrl.replace(/\/api\/v1\/?$/, ''); // e.g. http://localhost:4000
@@ -33,6 +44,7 @@ export function useSportsSocket(matchId?: string): {
 
     socket.on('connect', () => {
       setIsConnected(true);
+      setConnectionVersion((version) => version + 1);
       if (matchId) {
         socket.emit('subscribe_match', { matchId });
       } else {
@@ -45,11 +57,11 @@ export function useSportsSocket(matchId?: string): {
     });
 
     socket.on('cricket.score.updated', (data: any) => {
-      setLiveUpdate(data);
+      if (acceptEvent('cricket.score.updated', data)) setLiveUpdate(data);
     });
 
     socket.on('cricket.ball.completed', (data: any) => {
-      setBallEvent(data);
+      if (acceptEvent('cricket.ball.completed', data)) setBallEvent(data);
     });
 
     socket.on('cricket.match.completed', (data: any) => {
@@ -70,5 +82,6 @@ export function useSportsSocket(matchId?: string): {
     ballEvent,
     matchCompletedEvent,
     socket: socketRef.current,
+    connectionVersion,
   };
 }

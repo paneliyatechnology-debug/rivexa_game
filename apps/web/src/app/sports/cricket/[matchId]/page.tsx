@@ -17,7 +17,7 @@ import { TestBetHistoryView } from '@/components/sports/TestBetHistoryView';
 import { useSportsSocket } from '@/hooks/useSportsSocket';
 import { getApiBaseUrl } from '@/lib/config';
 import { IMatch } from '@gaming-platform/types';
-import { RefreshCw, AlertCircle, ShieldAlert, History, Sparkles } from 'lucide-react';
+import { RefreshCw, AlertCircle, History, Sparkles } from 'lucide-react';
 
 export default function CricketMatchDetailPage({
   params,
@@ -44,7 +44,7 @@ export default function CricketMatchDetailPage({
   const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // WebSocket for Real-Time Match Events
-  const { isConnected, liveUpdate, ballEvent } = useSportsSocket(matchId);
+  const { isConnected, liveUpdate, ballEvent, connectionVersion } = useSportsSocket(matchId);
 
   // Fetch full match detail from NestJS API
   const fetchMatchDetail = useCallback(async () => {
@@ -92,19 +92,9 @@ export default function CricketMatchDetailPage({
           setCategories(json.data);
         }
       }
-    } catch (e) {
-      // Fallback default categories
-      setCategories([
-        { id: '1', slug: 'all', name: 'All Markets', sortOrder: 1 },
-        { id: '2', slug: 'main', name: 'Main', sortOrder: 2 },
-        { id: '3', slug: 'quick', name: 'Quick', sortOrder: 3 },
-        { id: '4', slug: 'first_innings', name: '1st Innings', sortOrder: 4 },
-        { id: '5', slug: 'overs', name: 'Overs', sortOrder: 5 },
-        { id: '6', slug: 'players', name: 'Players', sortOrder: 6 },
-        { id: '7', slug: 'dismissal', name: 'Dismissal', sortOrder: 7 },
-        { id: '8', slug: 'odd_even', name: 'Odd/Even', sortOrder: 8 },
-        { id: '9', slug: 'session', name: 'Session / Fancy', sortOrder: 9 },
-      ]);
+    } catch {
+      // Categories are database-managed; do not substitute production data in the client.
+      setCategories([]);
     }
   }, []);
 
@@ -112,6 +102,11 @@ export default function CricketMatchDetailPage({
     fetchMatchDetail();
     fetchCategories();
   }, [fetchMatchDetail, fetchCategories]);
+
+  // A reconnect can have missed notifications: recover from the API/DB once.
+  useEffect(() => {
+    if (connectionVersion > 1) void fetchMatchDetail();
+  }, [connectionVersion, fetchMatchDetail]);
 
   useEffect(() => {
     if (activeTab === 'markets') {
@@ -163,38 +158,24 @@ export default function CricketMatchDetailPage({
     const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
     if (targetMatchId && targetMatchId !== matchId) return;
 
-    const newScore = liveUpdate.score || liveUpdate;
-    setMatch((prev: IMatch | null) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        score: {
-          ...prev.score,
-          ...newScore,
-        },
-      };
-    });
-  }, [liveUpdate, matchId]);
+    // Socket payload is only a notification. Re-read canonical state from our API/DB.
+    void fetchMatchDetail();
+    if (activeTab === 'markets') {
+      void fetchMarkets(activeCategorySlug);
+    }
+  }, [liveUpdate, matchId, fetchMatchDetail, activeTab, activeCategorySlug, fetchMarkets]);
 
-  // Handle new ball commentary events in real-time
+  // Commentary events follow the same DB-first refresh path.
   useEffect(() => {
-    if (!ballEvent || ballEvent.matchId !== matchId || !ballEvent.commentary) return;
-    setMatch((prev: IMatch | null) => {
-      if (!prev) return prev;
-      const existing = prev.commentaries || [];
-      return {
-        ...prev,
-        score: ballEvent.score || prev.score,
-        commentaries: [ballEvent.commentary, ...existing],
-      };
-    });
-  }, [ballEvent, matchId]);
+    if (!ballEvent || ballEvent.matchId !== matchId) return;
+    void fetchMatchDetail();
+  }, [ballEvent, matchId, fetchMatchDetail]);
 
   return (
-    <div className="w-full h-screen bg-gradient-to-b from-[#0F1C45] via-[#0A1433] to-[#070E24] text-[#F5F7FF] flex flex-col font-sans pt-[56px] sm:pt-[84px] overflow-hidden">
+    <div className="w-full h-screen bg-gradient-to-b from-[#0F1C45] via-[#0A1433] to-[#070E24] text-[#F5F7FF] flex flex-col font-sans pt-[78px] sm:pt-[84px] overflow-hidden">
       <TopHeader />
 
-      <div className="flex-1 flex w-full max-w-[1600px] mx-auto px-1.5 sm:px-4 py-1 sm:py-3 gap-3 lg:gap-6 lg:pl-[220px] xl:pl-60 overflow-hidden h-[calc(100vh-56px)] sm:h-[calc(100vh-84px)]">
+      <div className="flex-1 flex w-full max-w-[1600px] mx-auto px-1.5 sm:px-4 py-1 sm:py-3 gap-3 lg:gap-6 lg:pl-[220px] xl:pl-60 overflow-hidden h-[calc(100vh-78px)] sm:h-[calc(100vh-84px)]">
         {/* Left Sidebar */}
         <DesktopSidebar activeCategory="sports" />
 
@@ -278,12 +259,12 @@ export default function CricketMatchDetailPage({
                     )}
 
                     {/* Non-monetary Exchange Disclaimer */}
-                    <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/50 to-blue-900/40 border border-blue-400/30 rounded-xl p-3 text-xs text-blue-200 flex items-center gap-2 shadow-sm">
+                    {/* <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/50 to-blue-900/40 border border-blue-400/30 rounded-xl p-3 text-xs text-blue-200 flex items-center gap-2 shadow-sm">
                       <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>
                         Odds displayed are derived from live CricAPI scoring data & statistical probability models. Back odds are active for real test placement.
                       </span>
-                    </div>
+                    </div> */}
 
                     {/* Loading Markets */}
                     {isLoadingMarkets && (
@@ -309,12 +290,18 @@ export default function CricketMatchDetailPage({
                     {/* Market Cards List */}
                     {!isLoadingMarkets && !marketsError && (
                       <div className="space-y-4">
-                        {markets.length === 0 ? (
-                          <div className="py-12 bg-[#132657] border border-white/10 rounded-2xl text-center text-xs text-slate-300">
-                            No markets available in this category currently.
-                          </div>
-                        ) : (
-                          markets.map((m) => {
+                        {(() => {
+                          const visibleMarkets = markets.filter(
+                            (m) => m.status !== 'CLOSED' && m.status !== 'SETTLED'
+                          );
+                          if (visibleMarkets.length === 0) {
+                            return (
+                              <div className="py-12 bg-[#132657] border border-white/10 rounded-2xl text-center text-xs text-slate-300">
+                                No active betting markets available in this category currently.
+                              </div>
+                            );
+                          }
+                          return visibleMarkets.map((m) => {
                             const selectedInThisMarket = betSlipItems.find((it) => it.marketId === m.id);
                             return (
                               <MarketCardView
@@ -322,10 +309,11 @@ export default function CricketMatchDetailPage({
                                 market={m}
                                 onSelectOdds={handleSelectOdds}
                                 selectedSelectionId={selectedInThisMarket?.selectionId}
+                                matchId={matchId}
                               />
                             );
-                          })
-                        )}
+                          });
+                        })()}
                       </div>
                     )}
                   </div>

@@ -85,7 +85,17 @@ export default function SportsHomePage() {
     fetchMatches();
   }, [fetchMatches]);
 
-  // Handle real-time WebSocket live score updates smoothly
+  // ── Smart auto-refresh polling (Cricbuzz-style) ──────────────────────────
+  // Live tab: poll every 60s | Other tabs: poll every 5 min
+  useEffect(() => {
+    const intervalMs = activeTab === 'live' ? 60_000 : 5 * 60_000;
+    const timer = setInterval(() => {
+      fetchMatches();
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [activeTab, fetchMatches]);
+
+  // Handle real-time WebSocket live score updates — also do a full HTTP refresh
   useEffect(() => {
     if (!liveUpdate) return;
     const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
@@ -93,6 +103,7 @@ export default function SportsHomePage() {
 
     if (!targetMatchId) return;
 
+    // Optimistic in-place update from WS event
     setCompetitions((prevComps) =>
       prevComps.map((comp) => ({
         ...comp,
@@ -104,15 +115,21 @@ export default function SportsHomePage() {
                 ...m.score,
                 ...newScore,
               },
+              status: newScore.status === 'LIVE' ? 'LIVE' : m.status,
             };
           }
           return m;
         }),
       }))
     );
-  }, [liveUpdate]);
+
+    // Full HTTP refresh shortly after to pick up any other match changes
+    const refreshTimer = setTimeout(() => fetchMatches(), 2000);
+    return () => clearTimeout(refreshTimer);
+  }, [liveUpdate, fetchMatches]);
 
   // Calculate overall dynamic match counts from API
+
   const currentSport = sports.find((s) => s.slug === activeSportSlug);
   const liveCount = currentSport?.matchCount?.live ?? 0;
   const upcomingCount = currentSport?.matchCount?.upcoming ?? 0;

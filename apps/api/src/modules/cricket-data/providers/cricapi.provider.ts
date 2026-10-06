@@ -16,12 +16,31 @@ export class CricApiProvider implements ICricketDataProvider {
   readonly providerName = 'cricapi';
   private readonly logger = new Logger(CricApiProvider.name);
 
+  private customApiKey?: string;
+  private customBaseUrl?: string;
+
+  public setApiKey(key: string) {
+    if (key) this.customApiKey = key;
+  }
+
+  public setBaseUrl(url: string) {
+    if (url) this.customBaseUrl = url;
+  }
+
+  public getApiKey(): string {
+    return this.customApiKey || process.env.CRICAPI_API_KEY || '';
+  }
+
+  public getBaseUrl(): string {
+    return (this.customBaseUrl || process.env.CRICAPI_BASE_URL || 'https://api.cricapi.com/v1').replace(/\/$/, '');
+  }
+
   private get baseUrl(): string {
-    return (process.env.CRICAPI_BASE_URL || 'https://api.cricapi.com/v1').replace(/\/$/, '');
+    return this.getBaseUrl();
   }
 
   private get apiKey(): string {
-    return process.env.CRICAPI_API_KEY || 'e4a56526-d793-4a49-9702-02f4b6a38dc8';
+    return this.getApiKey();
   }
 
   private get timeoutMs(): number {
@@ -99,6 +118,11 @@ export class CricApiProvider implements ICricketDataProvider {
   }
 
   private async fetchFromApi<T>(endpointPath: string, params: Record<string, string> = {}): Promise<T | null> {
+    if (!this.apiKey) {
+      // Never fall back to a credential embedded in source code.
+      this.logger.error('CricAPI request skipped: CRICAPI_API_KEY is not configured');
+      return null;
+    }
     const url = new URL(`${this.baseUrl}/${endpointPath}`);
     if (this.apiKey) {
       url.searchParams.append('apikey', this.apiKey);

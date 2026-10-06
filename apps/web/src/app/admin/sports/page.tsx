@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { getApiBaseUrl } from '@/lib/config';
 import { useSportsSocket } from '@/hooks/useSportsSocket';
 import {
@@ -34,7 +35,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-export default function AdminSportsPage() {
+function SportsAdminContent() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
   const [categories, setCategories] = useState<any[]>([]);
   const [competitions, setCompetitions] = useState<any[]>([]);
@@ -75,14 +76,22 @@ export default function AdminSportsPage() {
 
   // Provider Configuration Edit Form
   const [providerForm, setProviderForm] = useState<{
+    providerName: string;
     baseUrl: string;
+    apiKey: string;
+    authParamName: string;
     isActive: boolean;
     isTestMode: boolean;
   }>({
-    baseUrl: 'https://api.cricapi.com/v1',
+    providerName: '',
+    baseUrl: '',
+    apiKey: '',
+    authParamName: '',
     isActive: true,
     isTestMode: true,
   });
+  const [isCustomProviderName, setIsCustomProviderName] = useState<boolean>(false);
+  const [showApiKey, setShowApiKey] = useState<boolean>(false);
   const [savingConfig, setSavingConfig] = useState<boolean>(false);
 
   // Connection test & capabilities state
@@ -98,20 +107,20 @@ export default function AdminSportsPage() {
   const [addMatchForm, setAddMatchForm] = useState({
     sportSlug: 'cricket',
     competitionId: '',
-    competitionName: 'International T20 Trophy',
+    competitionName: '',
     teamAName: '',
     teamAShort: '',
     teamBName: '',
     teamBShort: '',
     matchType: 'T20',
-    venue: 'Wankhede Stadium, Mumbai',
-    startTime: new Date().toISOString().slice(0, 16),
-    status: 'LIVE',
-    teamAScore: '0/0',
-    teamBScore: 'N/A',
-    teamAOvers: '0.0',
-    teamBOvers: '0.0',
-    statusText: 'Match in progress',
+    venue: '',
+    startTime: '',
+    status: 'UPCOMING',
+    teamAScore: '',
+    teamBScore: '',
+    teamAOvers: '',
+    teamBOvers: '',
+    statusText: '',
   });
 
   // Live Control Modal State
@@ -179,12 +188,266 @@ export default function AdminSportsPage() {
   const [loadingBetSettings, setLoadingBetSettings] = useState<boolean>(false);
   const [savingBetSettings, setSavingBetSettings] = useState<boolean>(false);
 
-  const [activeTab, setActiveTab] = useState<
-    'matches' | 'bets' | 'markets' | 'categories' | 'competitions' | 'provider' | 'bet_settings'
-  >('matches');
+  // Odds & Win % Configurator State
+  const [showOddsConfigModal, setShowOddsConfigModal] = useState(false);
+  const [selectedOddsMatch, setSelectedOddsMatch] = useState<any>(null);
+  const [oddsConfigForm, setOddsConfigForm] = useState({
+    matchId: '',
+    mode: 'AUTO' as 'AUTO' | 'MANUAL',
+    winProbA: 50,
+    winProbB: 50,
+    oddsA: 2.00,
+    oddsB: 2.00,
+  });
+  const [savingOddsConfig, setSavingOddsConfig] = useState(false);
+
+  const handleOpenOddsConfigModal = async (match: any) => {
+    setSelectedOddsMatch(match);
+    const initialProbA = match.statsSummary?.winProbabilityTeamA || 50;
+    const initialProbB = match.statsSummary?.winProbabilityTeamB || (100 - initialProbA);
+    const initialOddsA = match.statsSummary?.oddsA || Number((100 / Math.max(1, initialProbA)).toFixed(2));
+    const initialOddsB = match.statsSummary?.oddsB || Number((100 / Math.max(1, initialProbB)).toFixed(2));
+
+    setOddsConfigForm({
+      matchId: match.id,
+      mode: match.statsSummary?.isManual ? 'MANUAL' : 'AUTO',
+      winProbA: initialProbA,
+      winProbB: initialProbB,
+      oddsA: initialOddsA,
+      oddsB: initialOddsB,
+    });
+    setShowOddsConfigModal(true);
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/matches/${match.id}/odds`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data) {
+          setOddsConfigForm({
+            matchId: match.id,
+            mode: json.data.mode || 'AUTO',
+            winProbA: json.data.winProbA || initialProbA,
+            winProbB: json.data.winProbB || initialProbB,
+            oddsA: json.data.oddsA || initialOddsA,
+            oddsB: json.data.oddsB || initialOddsB,
+          });
+        }
+      }
+    } catch (err) {}
+  };
+
+  const handleSaveOddsConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!oddsConfigForm.matchId) return;
+    setSavingOddsConfig(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/matches/${oddsConfigForm.matchId}/odds`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: oddsConfigForm.mode,
+          winProbA: Number(oddsConfigForm.winProbA),
+          winProbB: Number(oddsConfigForm.winProbB),
+          oddsA: Number(oddsConfigForm.oddsA),
+          oddsB: Number(oddsConfigForm.oddsB),
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        setMessage(`Match Odds & Win % Configured (${json.data.mode} Mode)!`);
+        setShowOddsConfigModal(false);
+        fetchAdminData();
+      } else {
+        setMessage('Failed to save odds config');
+      }
+    } catch (err: any) {
+      setMessage(`Error: ${err.message}`);
+    } finally {
+      setSavingOddsConfig(false);
+    }
+  };
+
+  // Match Analytics & Question Management Modal State
+  const [showMatchAnalyticsModal, setShowMatchAnalyticsModal] = useState<boolean>(false);
+  const [selectedAnalyticsMatch, setSelectedAnalyticsMatch] = useState<any>(null);
+  const [matchAnalyticsData, setMatchAnalyticsData] = useState<any>(null);
+  const [loadingMatchAnalytics, setLoadingMatchAnalytics] = useState<boolean>(false);
+  const [analyticsTab, setAnalyticsTab] = useState<'REVENUE' | 'QUESTIONS' | 'ODD_EVEN'>('REVENUE');
+  const [matchOddEvenForm, setMatchOddEvenForm] = useState<{ enabled: boolean; rate: number }>({
+    enabled: true,
+    rate: 1.90,
+  });
+  const [savingMatchOddEven, setSavingMatchOddEven] = useState<boolean>(false);
+
+  const handleOpenMatchAnalytics = async (match: any) => {
+    setSelectedAnalyticsMatch(match);
+    setShowMatchAnalyticsModal(true);
+    setLoadingMatchAnalytics(true);
+    setAnalyticsTab('REVENUE');
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/matches/${match.id}/analytics`);
+      if (res.ok) {
+        const json = await res.json();
+        setMatchAnalyticsData(json.data);
+        if (json.data?.oddEvenConfig) {
+          setMatchOddEvenForm({
+            enabled: json.data.oddEvenConfig.enabled,
+            rate: json.data.oddEvenConfig.rate || 1.90,
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed loading match analytics:', err);
+    } finally {
+      setLoadingMatchAnalytics(false);
+    }
+  };
+
+  const handleSaveMatchOddEven = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAnalyticsMatch?.id) return;
+    setSavingMatchOddEven(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/matches/${selectedAnalyticsMatch.id}/odd-even`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(matchOddEvenForm),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setMatchAnalyticsData(json.data);
+        setMessage(`Match Odd/Even settings updated for ${selectedAnalyticsMatch.teamA?.name} vs ${selectedAnalyticsMatch.teamB?.name}`);
+      }
+    } catch (err: any) {
+      setMessage(`Failed updating match odd/even rate: ${err.message}`);
+    } finally {
+      setSavingMatchOddEven(false);
+    }
+  };
+
+  const handleDeleteMatchMarket = async (marketId: string) => {
+    if (!window.confirm('Are you sure you want to delete this market/question?')) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/markets/${marketId}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setMessage('Market deleted successfully');
+        if (selectedAnalyticsMatch?.id) {
+          handleOpenMatchAnalytics(selectedAnalyticsMatch);
+        }
+      }
+    } catch (err: any) {
+      setMessage(`Error deleting market: ${err.message}`);
+    }
+  };
+
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  type TabType =
+    | 'matches'
+    | 'bets'
+    | 'markets'
+    | 'categories'
+    | 'competitions'
+    | 'provider'
+    | 'bet_settings';
+
+  const validTabs = useMemo<TabType[]>(
+    () => ['matches', 'bets', 'markets', 'categories', 'competitions', 'provider', 'bet_settings'],
+    []
+  );
+
+  const tabQuery = searchParams.get('tab') as TabType | null;
+
+  const [activeTab, setActiveTabState] = useState<TabType>(() => {
+    if (tabQuery && validTabs.includes(tabQuery)) {
+      return tabQuery;
+    }
+    return 'matches';
+  });
+
+  useEffect(() => {
+    if (tabQuery && validTabs.includes(tabQuery) && tabQuery !== activeTab) {
+      setActiveTabState(tabQuery);
+    }
+  }, [tabQuery, validTabs, activeTab]);
+
+  const setActiveTab = useCallback(
+    (tab: TabType) => {
+      setActiveTabState(tab);
+      router.push(`/admin/sports?tab=${tab}`, { scroll: false });
+    },
+    [router]
+  );
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+
+  // Match Directory DataTable State & Filtering
+  const [matchSearchQuery, setMatchSearchQuery] = useState('');
+  const [matchStatusFilter, setMatchStatusFilter] = useState('ALL');
+  const [matchCompetitionFilter, setMatchCompetitionFilter] = useState('ALL');
+  const [matchFormatFilter, setMatchFormatFilter] = useState('ALL');
+  const [matchCurrentPage, setMatchCurrentPage] = useState(1);
+  const [matchPageSize, setMatchPageSize] = useState(10);
+
+  // Filtered Matches
+  const filteredMatches = useMemo(() => {
+    return matches.filter((m) => {
+      // 1. Search Query Filter
+      if (matchSearchQuery.trim()) {
+        const q = matchSearchQuery.toLowerCase().trim();
+        const teamA = (m.teamA?.name || '').toLowerCase();
+        const teamB = (m.teamB?.name || '').toLowerCase();
+        const comp = (m.competition?.name || '').toLowerCase();
+        const venue = (m.venue || '').toLowerCase();
+        const matchType = (m.matchType || '').toLowerCase();
+        const status = (m.status || '').toLowerCase();
+        if (
+          !teamA.includes(q) &&
+          !teamB.includes(q) &&
+          !comp.includes(q) &&
+          !venue.includes(q) &&
+          !matchType.includes(q) &&
+          !status.includes(q)
+        ) {
+          return false;
+        }
+      }
+
+      // 2. Status Filter
+      if (matchStatusFilter !== 'ALL' && m.status !== matchStatusFilter) {
+        return false;
+      }
+
+      // 3. Competition Filter
+      if (matchCompetitionFilter !== 'ALL' && m.competitionId !== matchCompetitionFilter) {
+        return false;
+      }
+
+      // 4. Format Filter
+      if (matchFormatFilter !== 'ALL' && (m.matchType || '').toUpperCase() !== matchFormatFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [matches, matchSearchQuery, matchStatusFilter, matchCompetitionFilter, matchFormatFilter]);
+
+  const totalMatchPages = Math.ceil(filteredMatches.length / matchPageSize) || 1;
+
+  const paginatedMatches = useMemo(() => {
+    const start = (matchCurrentPage - 1) * matchPageSize;
+    return filteredMatches.slice(start, start + matchPageSize);
+  }, [filteredMatches, matchCurrentPage, matchPageSize]);
+
+  // Reset to page 1 when filter parameters change
+  useEffect(() => {
+    setMatchCurrentPage(1);
+  }, [matchSearchQuery, matchStatusFilter, matchCompetitionFilter, matchFormatFilter, matchPageSize]);
 
   const fetchBetSettings = useCallback(async () => {
     setLoadingBetSettings(true);
@@ -245,11 +508,19 @@ export default function AdminSportsPage() {
         const pData = (await provRes.json()).data || null;
         setProviderStatus(pData);
         if (pData?.providerDetails) {
+          const name = pData.activeProvider || pData.providerDetails.name || '';
           setProviderForm({
-            baseUrl: pData.providerDetails.baseUrl || 'https://api.cricapi.com/v1',
+            providerName: name,
+            baseUrl: pData.providerDetails.baseUrl || '',
+            apiKey: pData.providerDetails.apiKey || '',
+            authParamName: pData.providerDetails.authParamName || '',
             isActive: pData.providerDetails.isActive ?? true,
             isTestMode: pData.providerDetails.isTestMode ?? true,
           });
+          const knownProviders = ['cricapi', 'entitysport', 'sportmonks', 'generic_rest', 'custom_rest'];
+          if (name && !knownProviders.includes(name)) {
+            setIsCustomProviderName(true);
+          }
         }
       }
     } catch (err) {
@@ -360,6 +631,28 @@ export default function AdminSportsPage() {
       fetchAdminData();
     } catch (err: any) {
       setMessage(`Sync request failed: ${err.message || String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handlePurgeStaleMatches = async () => {
+    if (!window.confirm('Are you sure you want to purge all dummy/stale matches and re-sync from active API provider?')) {
+      return;
+    }
+    setSyncing(true);
+    setMessage(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/cricket/admin/purge-matches`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        setMessage(json.message || 'Purged stale matches successfully!');
+      } else {
+        setMessage(`Purge failed: ${json.message || 'Unknown error'}`);
+      }
+      fetchAdminData();
+    } catch (err: any) {
+      setMessage(`Purge request failed: ${err.message || String(err)}`);
     } finally {
       setSyncing(false);
     }
@@ -610,20 +903,20 @@ export default function AdminSportsPage() {
         setAddMatchForm({
           sportSlug: 'cricket',
           competitionId: '',
-          competitionName: 'International T20 Trophy',
+          competitionName: '',
           teamAName: '',
           teamAShort: '',
           teamBName: '',
           teamBShort: '',
           matchType: 'T20',
-          venue: 'Wankhede Stadium, Mumbai',
-          startTime: new Date().toISOString().slice(0, 16),
-          status: 'LIVE',
-          teamAScore: '0/0',
-          teamBScore: 'N/A',
-          teamAOvers: '0.0',
-          teamBOvers: '0.0',
-          statusText: 'Match in progress',
+          venue: '',
+          startTime: '',
+          status: 'UPCOMING',
+          teamAScore: '',
+          teamBScore: '',
+          teamAOvers: '',
+          teamBOvers: '',
+          statusText: '',
         });
         fetchAdminData();
       } else {
@@ -803,9 +1096,9 @@ export default function AdminSportsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans">
+    <div className="h-screen w-screen overflow-hidden bg-slate-100 text-slate-900 flex flex-col font-sans antialiased">
       {/* TOP HEADER matching main Admin Dashboard */}
-      <header className="bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-xs z-30">
+      <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-xs z-40">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -853,14 +1146,14 @@ export default function AdminSportsPage() {
 
       {/* ALERT BANNER */}
       {message && (
-        <div className="bg-blue-600 text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-sm shrink-0">
+        <div className="bg-blue-600 text-white text-xs font-extrabold px-6 py-2 flex items-center justify-between shadow-sm shrink-0 z-30">
           <span>{message}</span>
           <button onClick={() => setMessage('')} className="hover:opacity-80 text-sm font-bold">×</button>
         </div>
       )}
 
       {/* MAIN CONTAINER WITH SIDEBAR */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex overflow-hidden min-h-0 relative">
         {/* MOBILE BACKDROP OVERLAY */}
         {isMobileMenuOpen && (
           <div
@@ -871,10 +1164,11 @@ export default function AdminSportsPage() {
 
         {/* SIDEBAR NAVIGATION */}
         <aside
-          className={`w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-full transition-transform duration-200 z-50 ${isMobileMenuOpen
+          className={`w-64 bg-white border-r border-slate-200 flex flex-col justify-between shrink-0 h-full transition-transform duration-200 z-30 ${
+            isMobileMenuOpen
               ? 'fixed inset-y-0 left-0 shadow-2xl translate-x-0 h-full z-50'
               : 'hidden md:flex'
-            }`}
+          }`}
         >
           <div className="p-3 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
             {/* MAIN SECTION */}
@@ -947,24 +1241,13 @@ export default function AdminSportsPage() {
 
                 <button
                   onClick={() => setActiveTab('markets')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'markets'
-                      ? 'bg-teal-50 text-teal-600 border border-teal-200'
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'markets' || activeTab === 'bet_settings'
+                      ? 'bg-teal-50 text-teal-700 border border-teal-200 font-extrabold'
                       : 'text-slate-600 hover:bg-slate-50'
                     }`}
                 >
                   <span className="text-sm">⚙️</span>
-                  <span>Market &amp; Odd/Even Settings</span>
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('bet_settings')}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'bet_settings'
-                      ? 'bg-indigo-50 text-indigo-600 border border-indigo-200'
-                      : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                >
-                  <span className="text-sm">🎛️</span>
-                  <span>Bet Settings</span>
+                  <span>Market &amp; Bet Settings</span>
                 </button>
 
                 <button
@@ -1156,22 +1439,12 @@ export default function AdminSportsPage() {
 
             <button
               onClick={() => setActiveTab('markets')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'markets'
-                  ? 'bg-teal-600 text-white shadow-sm'
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'markets' || activeTab === 'bet_settings'
+                  ? 'bg-teal-600 text-white shadow-sm font-extrabold'
                   : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
                 }`}
             >
-              <Sliders className="w-3.5 h-3.5" /> Market &amp; Odd/Even Settings
-            </button>
-
-            <button
-              onClick={() => setActiveTab('bet_settings')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'bet_settings'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-                }`}
-            >
-              <Sliders className="w-3.5 h-3.5" /> Bet Settings
+              <Sliders className="w-3.5 h-3.5" /> Market &amp; Bet Settings
             </button>
 
             <button
@@ -1211,7 +1484,7 @@ export default function AdminSportsPage() {
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div>
                   <h2 className="font-bold text-slate-900 text-base">Match Directory &amp; Live Status Controls</h2>
-                  <p className="text-xs text-slate-500 font-medium">Create matches, manage live scores in real-time, and declare winner results.</p>
+                  <p className="text-xs text-slate-500 font-medium">Search, filter, manage live scores in real-time, configure odds and declare match winners.</p>
                 </div>
                 <button
                   onClick={() => setShowAddMatchModal(true)}
@@ -1221,6 +1494,97 @@ export default function AdminSportsPage() {
                 </button>
               </div>
 
+              {/* DATATABLE SEARCH, FILTERS & CONTROLS BAR */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                {/* SEARCH INPUT */}
+                <div className="relative flex-1 min-w-[220px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search team, competition, venue, status..."
+                    value={matchSearchQuery}
+                    onChange={(e) => setMatchSearchQuery(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  />
+                  {matchSearchQuery && (
+                    <button
+                      onClick={() => setMatchSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 font-bold text-xs"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {/* FILTER DROPDOWNS */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* STATUS FILTER */}
+                  <select
+                    value={matchStatusFilter}
+                    onChange={(e) => setMatchStatusFilter(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL">All Statuses ({matches.length})</option>
+                    <option value="LIVE">LIVE ({matches.filter((m) => m.status === 'LIVE').length})</option>
+                    <option value="UPCOMING">UPCOMING ({matches.filter((m) => m.status === 'UPCOMING').length})</option>
+                    <option value="COMPLETED">COMPLETED ({matches.filter((m) => m.status === 'COMPLETED').length})</option>
+                  </select>
+
+                  {/* COMPETITION FILTER */}
+                  <select
+                    value={matchCompetitionFilter}
+                    onChange={(e) => setMatchCompetitionFilter(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer max-w-[180px] truncate"
+                  >
+                    <option value="ALL">All Competitions</option>
+                    {competitions.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  {/* FORMAT FILTER */}
+                  <select
+                    value={matchFormatFilter}
+                    onChange={(e) => setMatchFormatFilter(e.target.value)}
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value="ALL">All Formats</option>
+                    <option value="T20">T20</option>
+                    <option value="ODI">ODI</option>
+                    <option value="TEST">TEST</option>
+                  </select>
+
+                  {/* PAGE SIZE SELECTOR */}
+                  <select
+                    value={matchPageSize}
+                    onChange={(e) => setMatchPageSize(Number(e.target.value))}
+                    className="px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value={5}>5 per page</option>
+                    <option value={10}>10 per page</option>
+                    <option value={20}>20 per page</option>
+                    <option value={50}>50 per page</option>
+                  </select>
+
+                  {(matchSearchQuery || matchStatusFilter !== 'ALL' || matchCompetitionFilter !== 'ALL' || matchFormatFilter !== 'ALL') && (
+                    <button
+                      onClick={() => {
+                        setMatchSearchQuery('');
+                        setMatchStatusFilter('ALL');
+                        setMatchCompetitionFilter('ALL');
+                        setMatchFormatFilter('ALL');
+                      }}
+                      className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                    >
+                      Reset Filters
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* DATATABLE CONTENTS */}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
@@ -1233,83 +1597,195 @@ export default function AdminSportsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {matches.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50">
-                        <td className="py-3.5 px-4 font-bold text-slate-900">
-                          <div className="flex items-center gap-2">
-                            <span>{m.teamA?.name} vs {m.teamB?.name}</span>
-                            {m.matchType && (
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono">
-                                {m.matchType}
-                              </span>
-                            )}
+                    {paginatedMatches.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-8 text-center text-slate-400">
+                          <div className="space-y-2">
+                            <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                            <div className="font-bold text-slate-600 text-sm">No matches found matching your filters</div>
+                            <button
+                              onClick={() => {
+                                setMatchSearchQuery('');
+                                setMatchStatusFilter('ALL');
+                                setMatchCompetitionFilter('ALL');
+                                setMatchFormatFilter('ALL');
+                              }}
+                              className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                            >
+                              Clear Search &amp; Reset Filters
+                            </button>
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-slate-600">{m.competition?.name}</td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
-                          {m.score?.teamAScore || '0/0'} ({m.score?.teamAOvers || '0.0'}) / {m.score?.teamBScore || 'N/A'} ({m.score?.teamBOvers || '0.0'})
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span
-                            className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1 w-max ${m.status === 'LIVE'
-                                ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                : m.status === 'UPCOMING'
-                                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-                              }`}
-                          >
-                            {m.status === 'LIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
-                            {m.status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right space-x-1.5">
-                          <button
-                            onClick={() => handleOpenLiveControl(m)}
-                            className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs inline-flex items-center gap-1"
-                            title="Manage Live Match Scores & Declare Winner"
-                          >
-                            <Zap className="w-3 h-3" /> Manage Live
-                          </button>
-                          <button
-                            onClick={() => handleOpenEditMatch(m)}
-                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer transition-colors border border-slate-300 inline-flex items-center gap-1"
-                            title="Edit Match Details"
-                          >
-                            <Edit3 className="w-3 h-3" /> Edit
-                          </button>
-                          <button
-                            onClick={() => handleUpdateMatchStatus(m.id, 'LIVE')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'LIVE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
-                              }`}
-                          >
-                            Set LIVE
-                          </button>
-                          <button
-                            onClick={() => handleUpdateMatchStatus(m.id, 'UPCOMING')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'UPCOMING' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
-                              }`}
-                          >
-                            Set UPCOMING
-                          </button>
-                          <button
-                            onClick={() => handleUpdateMatchStatus(m.id, 'COMPLETED')}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${m.status === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
-                              }`}
-                          >
-                            Set COMPLETED
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMatch(m.id)}
-                            className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors inline-block align-middle"
-                            title="Delete Match"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      paginatedMatches.map((m) => (
+                        <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3.5 px-4 font-bold text-slate-900">
+                            <div className="flex items-center gap-2">
+                              <span>{m.teamA?.name} vs {m.teamB?.name}</span>
+                              {m.matchType && (
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-mono">
+                                  {m.matchType}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600">{m.competition?.name}</td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-emerald-600">
+                            {m.score?.teamAScore || '0/0'} ({m.score?.teamAOvers || '0.0'}) / {m.score?.teamBScore || 'N/A'} ({m.score?.teamBOvers || '0.0'})
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full font-bold text-[11px] flex items-center gap-1 w-max ${
+                                m.status === 'LIVE'
+                                  ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                  : m.status === 'UPCOMING'
+                                    ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}
+                            >
+                              {m.status === 'LIVE' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />}
+                              {m.status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right space-x-1.5">
+                            <button
+                              onClick={() => handleOpenLiveControl(m)}
+                              className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs inline-flex items-center gap-1"
+                              title="Manage Live Match Scores & Declare Winner"
+                            >
+                              <Zap className="w-3 h-3" /> Manage Live
+                            </button>
+                            <button
+                              onClick={() => handleOpenOddsConfigModal(m)}
+                              className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors shadow-xs inline-flex items-center gap-1"
+                              title="Configure Win % & Multiplier (X) Odds"
+                            >
+                              <Sliders className="w-3 h-3" /> Win % &amp; Odds
+                            </button>
+                            <Link
+                              href={`/admin/sports/matches/${m.id}`}
+                              className="px-2.5 py-1 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg text-[11px] font-extrabold cursor-pointer transition-all shadow-xs inline-flex items-center gap-1"
+                              title="View Dedicated Match Control, Questions & Revenue Page"
+                            >
+                              <FileText className="w-3 h-3" /> Revenue &amp; Questions
+                            </Link>
+                            <button
+                              onClick={() => handleOpenEditMatch(m)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer transition-colors border border-slate-300 inline-flex items-center gap-1"
+                              title="Edit Match Details"
+                            >
+                              <Edit3 className="w-3 h-3" /> Edit
+                            </button>
+                            <button
+                              onClick={() => handleUpdateMatchStatus(m.id, 'LIVE')}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                                m.status === 'LIVE' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100'
+                              }`}
+                            >
+                              Set LIVE
+                            </button>
+                            <button
+                              onClick={() => handleUpdateMatchStatus(m.id, 'UPCOMING')}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                                m.status === 'UPCOMING' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100'
+                              }`}
+                            >
+                              Set UPCOMING
+                            </button>
+                            <button
+                              onClick={() => handleUpdateMatchStatus(m.id, 'COMPLETED')}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-colors ${
+                                m.status === 'COMPLETED' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
+                              }`}
+                            >
+                              Set COMPLETED
+                            </button>
+                            <button
+                              onClick={() => handleDeleteMatch(m.id)}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors inline-block align-middle"
+                              title="Delete Match"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* DATATABLE PAGINATION FOOTER */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200 text-xs text-slate-500 font-medium">
+                <div>
+                  Showing{' '}
+                  <span className="font-bold text-slate-900">
+                    {filteredMatches.length === 0 ? 0 : (matchCurrentPage - 1) * matchPageSize + 1}
+                  </span>{' '}
+                  to{' '}
+                  <span className="font-bold text-slate-900">
+                    {Math.min(matchCurrentPage * matchPageSize, filteredMatches.length)}
+                  </span>{' '}
+                  of <span className="font-bold text-slate-900">{filteredMatches.length}</span> matches
+                  {filteredMatches.length !== matches.length && (
+                    <span className="text-slate-400 font-normal"> (filtered from {matches.length} total)</span>
+                  )}
+                </div>
+
+                {totalMatchPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setMatchCurrentPage(1)}
+                      disabled={matchCurrentPage === 1}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setMatchCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={matchCurrentPage === 1}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      ‹ Prev
+                    </button>
+
+                    {Array.from({ length: totalMatchPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalMatchPages || Math.abs(p - matchCurrentPage) <= 1)
+                      .map((page, idx, array) => (
+                        <React.Fragment key={page}>
+                          {idx > 0 && array[idx - 1] !== page - 1 && (
+                            <span className="px-1 text-slate-400">...</span>
+                          )}
+                          <button
+                            onClick={() => setMatchCurrentPage(page)}
+                            className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                              matchCurrentPage === page
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        </React.Fragment>
+                      ))}
+
+                    <button
+                      onClick={() => setMatchCurrentPage((p) => Math.min(totalMatchPages, p + 1))}
+                      disabled={matchCurrentPage === totalMatchPages}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      Next ›
+                    </button>
+                    <button
+                      onClick={() => setMatchCurrentPage(totalMatchPages)}
+                      disabled={matchCurrentPage === totalMatchPages}
+                      className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold cursor-pointer"
+                    >
+                      »
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1645,94 +2121,163 @@ export default function AdminSportsPage() {
               </div>
 
               {/* Provider Configuration Form */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                <h3 className="font-bold text-slate-900 text-base border-b border-slate-100 pb-3">Active Data Provider Configuration</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-700">API Base URL:</label>
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 text-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h3 className="font-bold text-slate-900 text-base">Active Data Provider Configuration</h3>
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    Active Engine: <strong className="uppercase">{providerForm.providerName}</strong>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-800">Select Provider Engine:</label>
+                    <select
+                      value={isCustomProviderName ? 'custom' : providerForm.providerName}
+                      onChange={(e) => {
+                        if (e.target.value === 'custom') {
+                          setIsCustomProviderName(true);
+                          setProviderForm({ ...providerForm, providerName: '' });
+                        } else {
+                          setIsCustomProviderName(false);
+                          setProviderForm({ ...providerForm, providerName: e.target.value });
+                        }
+                      }}
+                      className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 rounded-xl font-sans text-xs font-bold focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 antialiased shadow-xs cursor-pointer"
+                    >
+                      <option value="cricapi">CricAPI (Rest Engine)</option>
+                      <option value="entitysport">EntitySport API</option>
+                      <option value="sportmonks">Sportmonks API</option>
+                      <option value="generic_rest">Generic REST Provider</option>
+                      <option value="custom_rest">Custom REST Proxy</option>
+                      <option value="custom">✍️ Other / Custom Provider Name</option>
+                    </select>
+
+                    {isCustomProviderName && (
+                      <input
+                        type="text"
+                        value={providerForm.providerName}
+                        onChange={(e) => setProviderForm({ ...providerForm, providerName: e.target.value })}
+                        placeholder="Enter custom engine name e.g. my_custom_api"
+                        className="w-full mt-1.5 p-2 bg-slate-50 border border-blue-300 text-blue-900 rounded-lg text-xs font-bold focus:outline-none"
+                      />
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-800">API Base URL:</label>
                     <input
                       type="text"
                       value={providerForm.baseUrl}
                       onChange={(e) => setProviderForm({ ...providerForm, baseUrl: e.target.value })}
-                      className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono text-xs focus:outline-none focus:border-blue-600"
+                      className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 rounded-xl font-sans text-xs font-semibold focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 antialiased shadow-xs"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-700">Server API Key:</label>
-                    <input
-                      type="text"
-                      disabled
-                      value="e4a56526-••••-••••-••••-02f4b6a38dc8 (Secured Server-Side)"
-                      className="w-full p-2.5 bg-slate-100 border border-slate-200 text-slate-500 rounded-xl font-mono text-xs cursor-not-allowed"
-                    />
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-800">Server API Key:</label>
+                    <div className="relative">
+                      <input
+                        type={showApiKey ? "text" : "password"}
+                        value={providerForm.apiKey}
+                        onChange={(e) => setProviderForm({ ...providerForm, apiKey: e.target.value })}
+                        placeholder="Enter API Key (e.g. 3c1bcbb6-8e21-4d49-a1e1-3d4a13730a5f)"
+                        className="w-full p-2.5 pr-10 bg-white border border-slate-300 text-slate-900 rounded-xl font-sans text-xs font-semibold focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 antialiased shadow-xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-900 text-sm px-1.5 py-0.5 rounded focus:outline-none cursor-pointer"
+                        title={showApiKey ? "Hide API Key" : "Show API Key"}
+                      >
+                        <i className={`bi bi-eye${showApiKey ? '-slash' : ''}`}></i>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <div className="flex items-center gap-4 text-xs font-bold">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={providerForm.isActive}
-                        onChange={(e) => setProviderForm({ ...providerForm, isActive: e.target.checked })}
-                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                      />
-                      <span>Provider Enabled</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={providerForm.isTestMode}
-                        onChange={(e) => setProviderForm({ ...providerForm, isTestMode: e.target.checked })}
-                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
-                      />
-                      <span>Test Mode Active</span>
-                    </label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-sans pt-1">
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-800">Auth Param Name:</label>
+                    <input
+                      type="text"
+                      value={providerForm.authParamName}
+                      onChange={(e) => setProviderForm({ ...providerForm, authParamName: e.target.value })}
+                      placeholder="Param name e.g. apikey, token, access_token"
+                      className="w-full p-2.5 bg-white border border-slate-300 text-slate-900 rounded-xl font-sans text-xs font-semibold focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20 antialiased shadow-xs"
+                    />
                   </div>
 
-                  <button
-                    onClick={handleSaveProviderConfig}
-                    disabled={savingConfig}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-                  >
-                    {savingConfig ? 'Saving...' : 'Save Configuration'}
-                  </button>
+                  <div className="flex items-center justify-between pt-6">
+                    <div className="flex items-center gap-6 text-xs font-sans">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={providerForm.isActive}
+                          onChange={(e) => setProviderForm({ ...providerForm, isActive: e.target.checked })}
+                          className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="text-slate-900 font-bold text-xs">Provider Enabled</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={providerForm.isTestMode}
+                          onChange={(e) => setProviderForm({ ...providerForm, isTestMode: e.target.checked })}
+                          className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                        <span className="text-slate-900 font-bold text-xs">Test Mode Active</span>
+                      </label>
+                    </div>
+
+                    <button
+                      onClick={handleSaveProviderConfig}
+                      disabled={savingConfig}
+                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                    >
+                      {savingConfig ? 'Saving...' : 'Save Configuration'}
+                    </button>
+                  </div>
                 </div>
               </div>
 
-              {/* Provider Overview Card & Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-sm">
-                  <span className="text-[10px] uppercase font-bold text-slate-500">Active Provider</span>
-                  <div className="text-lg font-black text-amber-600 uppercase tracking-wider">
-                    {providerStatus?.activeProvider || 'cricapi'}
+              {/* Provider Overview Cards & API Call Statistics */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 font-sans text-slate-900">
+                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-1.5 shadow-sm">
+                  <span className="text-[11px] uppercase font-extrabold text-blue-600 tracking-wider">Today's API Calls</span>
+                  <div className="text-2xl font-black text-slate-900 font-sans tracking-tight">
+                    {providerStatus?.todayCalls ?? providerStatus?.budget?.hitsToday ?? 0}
+                    <span className="text-xs text-slate-500 font-medium"> / 90 limit</span>
                   </div>
-                  <div className="text-[11px] text-slate-500">api.cricapi.com v1 REST</div>
+                  <div className="text-xs text-slate-600 font-semibold">Budget Left: <span className="font-extrabold text-emerald-600">{providerStatus?.budget?.budgetRemaining ?? 90} hits</span></div>
                 </div>
 
-                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-sm">
-                  <span className="text-[10px] uppercase font-bold text-slate-500">Connection Health</span>
+                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-1.5 shadow-sm">
+                  <span className="text-[11px] uppercase font-extrabold text-indigo-600 tracking-wider">This Month's API Calls</span>
+                  <div className="text-2xl font-black text-slate-900 font-sans tracking-tight">
+                    {providerStatus?.monthlyBreakdown?.[0]?.count ?? providerStatus?.todayCalls ?? 0}
+                  </div>
+                  <div className="text-xs text-slate-600 font-semibold">Month: <span className="font-extrabold text-indigo-600">{providerStatus?.monthlyBreakdown?.[0]?.month || 'Current'}</span></div>
+                </div>
+
+                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-1.5 shadow-sm">
+                  <span className="text-[11px] uppercase font-extrabold text-slate-600 tracking-wider">Overall Total API Calls</span>
+                  <div className="text-2xl font-black text-slate-900 font-sans tracking-tight">
+                    {providerStatus?.overallTotalCalls ?? providerStatus?.providerDetails?.requestCount ?? 0}
+                  </div>
+                  <div className="text-xs text-slate-600 font-semibold">Failures: <span className="font-extrabold text-rose-600">{providerStatus?.providerDetails?.failedCount || 0}</span></div>
+                </div>
+
+                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-1.5 shadow-sm">
+                  <span className="text-[11px] uppercase font-extrabold text-slate-600 tracking-wider">Connection Health</span>
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span className="text-base font-bold text-emerald-600">Active &amp; Verified</span>
+                    <span className="text-sm font-black text-emerald-600">Active &amp; Verified</span>
                   </div>
-                  <div className="text-[11px] text-slate-500">
-                    Last Sync: {providerStatus?.providerDetails?.lastSyncAt ? new Date(providerStatus.providerDetails.lastSyncAt).toLocaleTimeString() : 'Just now'}
-                  </div>
+                  <div className="text-xs text-slate-600 font-semibold">Matches Mapped: <span className="font-extrabold text-slate-900">{providerStatus?.matchesSynced || 0}</span></div>
                 </div>
 
-                <div className="bg-white border border-slate-200 p-5 rounded-2xl space-y-2 shadow-sm">
-                  <span className="text-[10px] uppercase font-bold text-slate-500">API Requests / Failures</span>
-                  <div className="text-lg font-mono font-bold text-slate-900">
-                    {providerStatus?.providerDetails?.requestCount || 0} / <span className="text-red-600">{providerStatus?.providerDetails?.failedCount || 0}</span>
-                  </div>
-                  <div className="text-[11px] text-slate-500">
-                    Matches Mapped: {providerStatus?.matchesSynced || 0}
-                  </div>
-                </div>
-
-                <div className="bg-white border border-slate-200 p-5 rounded-2xl flex flex-col justify-between space-y-2 shadow-sm">
+                <div className="bg-white border border-slate-200 p-4 rounded-2xl flex flex-col justify-center space-y-2 shadow-sm">
                   <button
                     onClick={handleTestConnection}
                     disabled={testingConnection}
@@ -1750,6 +2295,64 @@ export default function AdminSportsPage() {
                     <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
                     {syncing ? 'Syncing...' : 'Trigger Manual Sync'}
                   </button>
+
+                  <button
+                    onClick={handlePurgeStaleMatches}
+                    disabled={syncing}
+                    className="w-full py-2 bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-700 hover:to-red-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Purge Stale & Dummy Matches
+                  </button>
+                </div>
+              </div>
+
+              {/* Month-Wise API Call Breakdown Table */}
+              <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4 font-sans text-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <h2 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-indigo-600" /> Month-Wise CricAPI Call History
+                  </h2>
+                  <span className="text-xs font-sans font-bold text-slate-700 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+                    Limit: 90 hits/day (CricAPI Free Plan)
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-700 font-extrabold uppercase tracking-wider bg-slate-50/80">
+                        <th className="py-3 px-3.5">Month</th>
+                        <th className="py-3 px-3.5">Total API Calls</th>
+                        <th className="py-3 px-3.5">Successful Calls</th>
+                        <th className="py-3 px-3.5">Failed Calls</th>
+                        <th className="py-3 px-3.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-sans text-xs text-slate-900">
+                      {providerStatus?.monthlyBreakdown && providerStatus.monthlyBreakdown.length > 0 ? (
+                        providerStatus.monthlyBreakdown.map((item: any) => (
+                          <tr key={item.month} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-3 px-3.5 font-bold text-slate-900">{item.month}</td>
+                            <td className="py-3 px-3.5 font-extrabold text-indigo-600">{item.count} calls</td>
+                            <td className="py-3 px-3.5 text-emerald-600 font-extrabold">{item.success}</td>
+                            <td className="py-3 px-3.5 text-rose-600 font-extrabold">{item.failed}</td>
+                            <td className="py-3 px-3.5">
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                RECORDED
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="py-4 text-center text-slate-400 italic">
+                            No monthly sync logs recorded yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
 
@@ -1828,7 +2431,7 @@ export default function AdminSportsPage() {
                         <th className="py-2.5 px-3">Timestamp</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                    <tbody className="divide-y divide-slate-100 font-sans text-xs text-slate-800">
                       {providerStatus?.recentSyncLogs && providerStatus.recentSyncLogs.length > 0 ? (
                         providerStatus.recentSyncLogs.map((log: any) => (
                           <tr key={log.id} className="hover:bg-slate-50">
@@ -2172,11 +2775,78 @@ export default function AdminSportsPage() {
               </button>
             </div>
 
+            {/* QUICK PRESET TEMPLATES */}
+            <div className="space-y-1.5 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
+              <span className="font-bold text-slate-700 text-[11px] block">Quick Template Presets:</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstMatch = matches[0];
+                    setCustomForm({
+                      matchId: customForm.matchId || (firstMatch ? firstMatch.id : ''),
+                      categorySlug: 'session',
+                      marketType: 'SESSION_FANCY',
+                      name: '6 Overs Session Line Over/Under 48.5',
+                      lineThreshold: '48.5',
+                      selections: [
+                        { name: 'Yes (Over 48.5)', backPrice: 1.85 },
+                        { name: 'No (Under 48.5)', backPrice: 1.85 },
+                      ],
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-teal-50 border border-slate-200 hover:border-teal-300 text-slate-700 font-bold rounded-lg text-[11px] cursor-pointer transition-all"
+                >
+                  ⚡ 6-Over Session
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstMatch = matches[0];
+                    setCustomForm({
+                      matchId: customForm.matchId || (firstMatch ? firstMatch.id : ''),
+                      categorySlug: 'odd_even',
+                      marketType: 'ODD_EVEN',
+                      name: 'Match Total Runs Odd or Even',
+                      lineThreshold: '',
+                      selections: [
+                        { name: 'Odd Runs', backPrice: 1.90 },
+                        { name: 'Even Runs', backPrice: 1.90 },
+                      ],
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-slate-700 font-bold rounded-lg text-[11px] cursor-pointer transition-all"
+                >
+                  🎲 Odd / Even Runs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstMatch = matches[0];
+                    setCustomForm({
+                      matchId: customForm.matchId || (firstMatch ? firstMatch.id : ''),
+                      categorySlug: 'players',
+                      marketType: 'PLAYER_RUNS',
+                      name: 'Will Key Batsman score 50+ Runs?',
+                      lineThreshold: '50',
+                      selections: [
+                        { name: 'Yes (50+ Runs)', backPrice: 2.10 },
+                        { name: 'No (Under 50 Runs)', backPrice: 1.70 },
+                      ],
+                    });
+                  }}
+                  className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 font-bold rounded-lg text-[11px] cursor-pointer transition-all"
+                >
+                  🏏 Player 50+ Fancy
+                </button>
+              </div>
+            </div>
+
             <form onSubmit={handleCreateCustomMarket} className="space-y-4 text-xs">
               <div className="space-y-1">
-                <label className="font-bold text-slate-700">Select Match:</label>
+                <label className="font-bold text-slate-700">Select Target Match:</label>
                 <select
-                  value={customForm.matchId}
+                  value={customForm.matchId || (matches[0] ? matches[0].id : '')}
                   onChange={(e) => setCustomForm({ ...customForm, matchId: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 font-bold focus:outline-none focus:border-teal-600"
                 >
@@ -2227,12 +2897,31 @@ export default function AdminSportsPage() {
                   value={customForm.name}
                   onChange={(e) => setCustomForm({ ...customForm, name: e.target.value })}
                   className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-teal-600"
+                  required
                 />
               </div>
 
               {/* Options / Selections */}
               <div className="space-y-2 pt-1 border-t border-slate-100">
-                <label className="font-bold text-slate-700 block">Outcomes &amp; Decimal Odds:</label>
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 block">Outcomes &amp; Decimal Odds:</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomForm({
+                        ...customForm,
+                        selections: [
+                          ...customForm.selections,
+                          { name: `Option ${customForm.selections.length + 1}`, backPrice: 1.85 },
+                        ],
+                      });
+                    }}
+                    className="text-[11px] font-bold text-teal-600 hover:text-teal-800 cursor-pointer"
+                  >
+                    + Add Outcome Option
+                  </button>
+                </div>
+
                 {customForm.selections.map((sel, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                     <input
@@ -2245,6 +2934,7 @@ export default function AdminSportsPage() {
                         setCustomForm({ ...customForm, selections: updated });
                       }}
                       className="flex-1 p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900"
+                      required
                     />
                     <input
                       type="number"
@@ -2257,7 +2947,20 @@ export default function AdminSportsPage() {
                         setCustomForm({ ...customForm, selections: updated });
                       }}
                       className="w-24 p-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold text-emerald-700 text-right"
+                      required
                     />
+                    {customForm.selections.length > 2 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = customForm.selections.filter((_, i) => i !== idx);
+                          setCustomForm({ ...customForm, selections: updated });
+                        }}
+                        className="p-1 text-red-400 hover:text-red-600 font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2266,7 +2969,7 @@ export default function AdminSportsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -2274,9 +2977,9 @@ export default function AdminSportsPage() {
                 <button
                   type="submit"
                   disabled={creatingMarket}
-                  className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs disabled:opacity-50"
+                  className="px-5 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white text-xs font-extrabold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
                 >
-                  {creatingMarket ? 'Creating...' : 'Create Question Bet'}
+                  {creatingMarket ? 'Creating Question Bet...' : 'Create Question Bet'}
                 </button>
               </div>
             </form>
@@ -2816,6 +3519,495 @@ export default function AdminSportsPage() {
           </div>
         </div>
       )}
+
+      {/* 4. LIVE MATCH ODDS & WIN % CONFIGURATOR MODAL */}
+      {showOddsConfigModal && selectedOddsMatch && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-indigo-600" /> Live Match Odds &amp; Win % Configurator
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  {selectedOddsMatch.teamA?.name} vs {selectedOddsMatch.teamB?.name}
+                </p>
+              </div>
+              <button onClick={() => setShowOddsConfigModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-lg">
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveOddsConfig} className="space-y-4 text-xs">
+              {/* Mode Selection: Option 1 (AUTO) vs Option 2 (MANUAL) */}
+              <div className="space-y-1.5">
+                <label className="font-extrabold text-slate-800 block uppercase text-[10px] tracking-wider">
+                  Odds &amp; Win Probability Calculation Mode:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setOddsConfigForm({ ...oddsConfigForm, mode: 'AUTO' })}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      oddsConfigForm.mode === 'AUTO'
+                        ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    Option 1: Auto Live Win %
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOddsConfigForm({ ...oddsConfigForm, mode: 'MANUAL' })}
+                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      oddsConfigForm.mode === 'MANUAL'
+                        ? 'bg-amber-50 border-amber-500 text-amber-800 shadow-sm'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    Option 2: Admin Manual Odds
+                  </button>
+                </div>
+              </div>
+
+              {oddsConfigForm.mode === 'AUTO' ? (
+                <div className="p-3.5 bg-indigo-50/70 border border-indigo-200 rounded-2xl text-indigo-900 space-y-1 leading-relaxed">
+                  <span className="font-bold flex items-center gap-1 text-indigo-700">
+                    <CheckCircle className="w-4 h-4" /> Automatic Statistical Model Active
+                  </span>
+                  <p className="text-[11px] text-indigo-700/90">
+                    Win percentage &amp; odds multipliers (X) are automatically calculated in real-time based on live match scores (Current Run Rate, Required Run Rate, Wickets lost &amp; Target).
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 p-4 bg-amber-50/50 border border-amber-200 rounded-2xl">
+                  <div className="font-bold text-amber-900 text-xs">
+                    Admin Custom Odds &amp; Win Percentage Controls:
+                  </div>
+
+                  {/* Team A Custom Config */}
+                  <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-amber-200">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1 truncate">
+                        {selectedOddsMatch.teamA?.name} Win %:
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={oddsConfigForm.winProbA}
+                        onChange={(e) => {
+                          const val = Math.min(99, Math.max(1, parseInt(e.target.value) || 50));
+                          const probB = 100 - val;
+                          setOddsConfigForm({
+                            ...oddsConfigForm,
+                            winProbA: val,
+                            winProbB: probB,
+                            oddsA: Number((100 / val).toFixed(2)),
+                            oddsB: Number((100 / probB).toFixed(2)),
+                          });
+                        }}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1 truncate">
+                        Multiplier (X Win):
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1.01"
+                        max="100"
+                        value={oddsConfigForm.oddsA}
+                        onChange={(e) => setOddsConfigForm({ ...oddsConfigForm, oddsA: parseFloat(e.target.value) || 1.75 })}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-indigo-600"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Team B Custom Config */}
+                  <div className="grid grid-cols-2 gap-3 bg-white p-3 rounded-xl border border-amber-200">
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1 truncate">
+                        {selectedOddsMatch.teamB?.name} Win %:
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={oddsConfigForm.winProbB}
+                        onChange={(e) => {
+                          const val = Math.min(99, Math.max(1, parseInt(e.target.value) || 50));
+                          const probA = 100 - val;
+                          setOddsConfigForm({
+                            ...oddsConfigForm,
+                            winProbB: val,
+                            winProbA: probA,
+                            oddsB: Number((100 / val).toFixed(2)),
+                            oddsA: Number((100 / probA).toFixed(2)),
+                          });
+                        }}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1 truncate">
+                        Multiplier (X Win):
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="1.01"
+                        max="100"
+                        value={oddsConfigForm.oddsB}
+                        onChange={(e) => setOddsConfigForm({ ...oddsConfigForm, oddsB: parseFloat(e.target.value) || 2.15 })}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono font-bold text-indigo-600"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowOddsConfigModal(false)}
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingOddsConfig}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  {savingOddsConfig ? 'Saving...' : 'Save Odds & Win % Config'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MATCH REVENUE & QUESTIONS ANALYTICS MODAL */}
+      {showMatchAnalyticsModal && selectedAnalyticsMatch && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-3xl w-full p-6 shadow-2xl space-y-5 my-8">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    {selectedAnalyticsMatch.teamA?.name} vs {selectedAnalyticsMatch.teamB?.name}
+                  </h3>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                      selectedAnalyticsMatch.status === 'LIVE'
+                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                        : selectedAnalyticsMatch.status === 'UPCOMING'
+                        ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {selectedAnalyticsMatch.status}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  {selectedAnalyticsMatch.competition?.name || 'Cricket Series'} • {selectedAnalyticsMatch.matchType || 'T20'} • {selectedAnalyticsMatch.venue || 'Stadium'}
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowMatchAnalyticsModal(false)}
+                className="text-slate-400 hover:text-slate-600 font-bold text-xl px-2"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* SUB-TABS */}
+            <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+              <button
+                type="button"
+                onClick={() => setAnalyticsTab('REVENUE')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  analyticsTab === 'REVENUE'
+                    ? 'bg-emerald-600 text-white shadow-xs font-extrabold'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                📊 Platform Revenue &amp; Win/Loss
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnalyticsTab('QUESTIONS')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  analyticsTab === 'QUESTIONS'
+                    ? 'bg-teal-600 text-white shadow-xs font-extrabold'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                🎯 Match Questions ({matchAnalyticsData?.matchMarkets?.length || 0})
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAnalyticsTab('ODD_EVEN')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  analyticsTab === 'ODD_EVEN'
+                    ? 'bg-purple-600 text-white shadow-xs font-extrabold'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                🎲 Match Odd/Even Rates
+              </button>
+            </div>
+
+            {loadingMatchAnalytics ? (
+              <div className="py-12 text-center text-slate-400 font-mono text-xs flex items-center justify-center gap-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-teal-600" />
+                Loading Match Revenue Analytics &amp; Betting Statistics...
+              </div>
+            ) : (
+              <div>
+                {/* TAB 1: REVENUE & WIN/LOSS ANALYTICS */}
+                {analyticsTab === 'REVENUE' && (
+                  <div className="space-y-5">
+                    {/* KPI CARDS */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500 block">Total Bet Turnover</span>
+                        <div className="text-base font-extrabold text-slate-900 font-mono">
+                          ₹{(matchAnalyticsData?.revenueSummary?.totalStake || 0).toLocaleString()}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">
+                          {matchAnalyticsData?.revenueSummary?.totalBetsCount || 0} total bets placed
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500 block">User Winnings Paid Out</span>
+                        <div className="text-base font-extrabold text-red-600 font-mono">
+                          ₹{(matchAnalyticsData?.revenueSummary?.totalPayout || 0).toLocaleString()}
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">
+                          {matchAnalyticsData?.revenueSummary?.wonBetsCount || 0} winning tickets paid
+                        </span>
+                      </div>
+
+                      <div
+                        className={`p-3.5 rounded-2xl border space-y-1 ${
+                          (matchAnalyticsData?.revenueSummary?.netRevenue || 0) >= 0
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
+                            : 'bg-red-50 border-red-200 text-red-950'
+                        }`}
+                      >
+                        <span className="text-[11px] font-extrabold block">Net Platform Revenue (GGR)</span>
+                        <div className="text-lg font-black font-mono">
+                          ₹{(matchAnalyticsData?.revenueSummary?.netRevenue || 0).toLocaleString()}
+                        </div>
+                        <span className="text-[10px] font-bold block">
+                          {(matchAnalyticsData?.revenueSummary?.netRevenue || 0) >= 0
+                            ? '🟢 Platform Profit'
+                            : '🔴 Platform Loss'}
+                        </span>
+                      </div>
+
+                      <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-1">
+                        <span className="text-[11px] font-bold text-slate-500 block">House Margin Win %</span>
+                        <div className="text-base font-extrabold text-indigo-600 font-mono">
+                          {matchAnalyticsData?.revenueSummary?.houseMarginPercent || 0}%
+                        </div>
+                        <span className="text-[10px] text-slate-400 block">Net retention rate</span>
+                      </div>
+                    </div>
+
+                    {/* BET TYPE BREAKDOWN TABLE */}
+                    <div className="space-y-2">
+                      <h4 className="font-extrabold text-slate-900 text-xs uppercase">Market Category Revenue Breakdown</h4>
+                      <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
+                              <th className="py-2.5 px-3">Market Name</th>
+                              <th className="py-2.5 px-3">Bets Placed</th>
+                              <th className="py-2.5 px-3">Stake Turnover</th>
+                              <th className="py-2.5 px-3">User Payouts</th>
+                              <th className="py-2.5 px-3 text-right">Net Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {matchAnalyticsData?.marketBreakdown && matchAnalyticsData.marketBreakdown.length > 0 ? (
+                              matchAnalyticsData.marketBreakdown.map((mb: any, i: number) => {
+                                const net = mb.stake - mb.payout;
+                                return (
+                                  <tr key={i} className="hover:bg-slate-50">
+                                    <td className="py-2.5 px-3 font-bold text-slate-900">{mb.name}</td>
+                                    <td className="py-2.5 px-3 font-mono text-slate-700">{mb.count}</td>
+                                    <td className="py-2.5 px-3 font-mono text-slate-900 font-bold">₹{mb.stake.toLocaleString()}</td>
+                                    <td className="py-2.5 px-3 font-mono text-red-600 font-bold">₹{mb.payout.toLocaleString()}</td>
+                                    <td className={`py-2.5 px-3 text-right font-mono font-extrabold ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                      ₹{net.toLocaleString()}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td colSpan={5} className="py-4 text-center text-slate-400 italic">
+                                  No bets placed on this match yet. Platform turnover will appear here in real time.
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: MATCH QUESTIONS & FANCY BETS */}
+                {analyticsTab === 'QUESTIONS' && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-slate-500">
+                        Manage custom fancy questions, session lines, and player bets for this specific match.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCustomForm((prev) => ({ ...prev, matchId: selectedAnalyticsMatch.id }));
+                          setShowCreateModal(true);
+                        }}
+                        className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> + Add Question For This Match
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase">
+                            <th className="py-2.5 px-3">Question / Market Title</th>
+                            <th className="py-2.5 px-3">Category</th>
+                            <th className="py-2.5 px-3">Outcomes &amp; Odds</th>
+                            <th className="py-2.5 px-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {matchAnalyticsData?.matchMarkets && matchAnalyticsData.matchMarkets.length > 0 ? (
+                            matchAnalyticsData.matchMarkets.map((m: any) => (
+                              <tr key={m.id} className="hover:bg-slate-50">
+                                <td className="py-2.5 px-3 font-bold text-slate-900">{m.name}</td>
+                                <td className="py-2.5 px-3">
+                                  <span className="px-2 py-0.5 bg-teal-50 text-teal-700 font-mono text-[10px] font-bold rounded border border-teal-200">
+                                    {m.categorySlug || m.marketType}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 font-mono">
+                                  {m.selections?.map((s: any) => `${s.name} @ ${s.backPrice}`).join(' | ') || 'N/A'}
+                                </td>
+                                <td className="py-2.5 px-3 text-right">
+                                  <button
+                                    onClick={() => handleDeleteMatchMarket(m.id)}
+                                    className="p-1 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Delete Market Question"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td colSpan={4} className="py-6 text-center text-slate-400 italic">
+                                No custom question bets created for this match yet. Click "+ Add Question For This Match" to add one!
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 3: ODD / EVEN RATE CONTROLS FOR THIS MATCH */}
+                {analyticsTab === 'ODD_EVEN' && (
+                  <form onSubmit={handleSaveMatchOddEven} className="space-y-4">
+                    <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-2xl space-y-3 text-xs">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-extrabold text-purple-950 text-sm block">Match Specific Odd/Even Rates</span>
+                          <span className="text-slate-500 text-[11px] block">Override default odd/even back multiplier specifically for this match.</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setMatchOddEvenForm({ ...matchOddEvenForm, enabled: !matchOddEvenForm.enabled })}
+                          className={`px-4 py-1.5 rounded-xl font-bold text-xs transition-all shadow-xs cursor-pointer ${
+                            matchOddEvenForm.enabled ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                          }`}
+                        >
+                          {matchOddEvenForm.enabled ? 'ENABLED' : 'DISABLED'}
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-purple-100">
+                        <div>
+                          <label className="font-bold text-slate-700 block mb-1">Odd/Even Back Price Rate (Multiplier):</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="1.01"
+                            max="10.0"
+                            value={matchOddEvenForm.rate}
+                            onChange={(e) => setMatchOddEvenForm({ ...matchOddEvenForm, rate: parseFloat(e.target.value) || 1.90 })}
+                            className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold text-emerald-700 focus:outline-none focus:border-purple-600"
+                            required
+                          />
+                          <p className="text-[10px] text-slate-400 mt-1">Default return multiplier for odd/even outcomes in this match (e.g. 1.90, 1.95)</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={savingMatchOddEven}
+                        className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold rounded-xl shadow-xs disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        {savingMatchOddEven ? 'Saving Rates...' : 'Save Match Odd/Even Rates'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function AdminSportsPage() {
+  return (
+    <React.Suspense
+      fallback={
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-900 text-white font-mono">
+          <div className="flex items-center gap-3">
+            <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+            <span>Loading Sports &amp; Betting Control Center...</span>
+          </div>
+        </div>
+      }
+    >
+      <SportsAdminContent />
+    </React.Suspense>
   );
 }

@@ -1559,7 +1559,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
               </span>
               <nav className="space-y-1">
                 <Link
-                  href="/admin/sports"
+                  href="/admin/sports?tab=matches"
                   className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'sports' ? 'bg-amber-50 text-amber-700 border border-amber-300 font-black' : 'text-slate-700 hover:bg-amber-50/60'}`}
                 >
                   <span className="text-sm">🏆</span>
@@ -1567,7 +1567,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                 </Link>
 
                 <Link
-                  href="/admin/sports"
+                  href="/admin/sports?tab=bets"
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors text-slate-600 hover:bg-slate-50"
                 >
                   <span className="text-sm">🎟️</span>
@@ -1575,15 +1575,15 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                 </Link>
 
                 <Link
-                  href="/admin/sports"
+                  href="/admin/sports?tab=markets"
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors text-slate-600 hover:bg-slate-50"
                 >
                   <span className="text-sm">⚙️</span>
-                  <span>Market &amp; Odd/Even Settings</span>
+                  <span>Market &amp; Bet Settings</span>
                 </Link>
 
                 <Link
-                  href="/admin/sports"
+                  href="/admin/sports?tab=provider"
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors text-slate-600 hover:bg-slate-50"
                 >
                   <span className="text-sm">🔌</span>

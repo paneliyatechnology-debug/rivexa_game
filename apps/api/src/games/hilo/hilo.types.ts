@@ -1,7 +1,9 @@
 export type CardRank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
 export type CardSuit = 'spades' | 'hearts' | 'diamonds' | 'clubs';
-export type HiloChoiceType = 'UP' | 'DOWN';
+export type HiloChoiceType = 'UP' | 'SAME' | 'DOWN';
 export type HiloResultType = 'WIN' | 'LOSS' | 'PENDING';
+
+export const HILO_SAME_MULTIPLIER = 14.99;
 
 export interface Card {
   code: string;       // e.g. "JC", "10H", "AS"
@@ -41,3 +43,19 @@ export const SUIT_CODES: Record<CardSuit, string> = {
   diamonds: 'D',
   clubs: 'C',
 };
+
+export type HiloSessionStatusType = 'READY' | 'ACTIVE' | 'CASHED_OUT' | 'LOST' | 'COMPLETED';
+
+export interface MultiplierCalculation {
+  upMultiplier: number | null;
+  downMultiplier: number | null;
+  sameMultiplier: number;
+  canUp: boolean;
+  canDown: boolean;
+  canSame: boolean;
+  higherCount: number;
+  lowerCount: number;
+  sameCount: number;
+  remainingCount: number;
+}
+

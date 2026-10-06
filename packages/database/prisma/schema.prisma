@@ -46,6 +46,7 @@ enum WithdrawalStatus {
 
 enum HiloChoice {
   UP
+  SAME
   DOWN
 }
 
@@ -59,6 +60,14 @@ enum HiloStatus {
   PENDING
   COMPLETED
   CANCELLED
+}
+
+enum HiloSessionStatus {
+  READY
+  ACTIVE
+  CASHED_OUT
+  LOST
+  COMPLETED
 }
 
 
@@ -103,6 +112,8 @@ model User {
   testBets                TestBet[]
   hiloRounds              HiloRound[]
   hiloBets                HiloBet[]
+  hiloSessions            HiloSession[]
+  hiloPlays               HiloPlay[]
   tenantPlayers           TenantPlayer[]
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
@@ -637,6 +648,58 @@ model HiloBet {
   @@index([roundId])
   @@index([createdAt])
   @@map("hilo_bets")
+}
+
+model HiloSession {
+  id                    String            @id @default(uuid()) @db.Uuid
+  sessionId             String            @unique @map("session_id")
+  userId                String            @map("user_id") @db.Uuid
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  originalBet           Decimal           @default(0.00) @map("original_bet") @db.Decimal(16, 4)
+  currentCard           String            @map("current_card")
+  currentRank           Int               @map("current_rank")
+  currentSuit           String            @map("current_suit")
+  currentMultiplier     Decimal           @default(1.0000) @map("current_multiplier") @db.Decimal(10, 4)
+  cashoutMultiplier     Decimal           @default(1.0000) @map("cashout_multiplier") @db.Decimal(10, 4)
+  currentCashoutAmount  Decimal           @default(0.00) @map("current_cashout_amount") @db.Decimal(16, 4)
+  remainingDeck         Json              @map("remaining_deck")
+  status                HiloSessionStatus @default(READY)
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
+  endedAt               DateTime?         @map("ended_at")
+
+  plays                 HiloPlay[]
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([userId, status])
+  @@map("hilo_sessions")
+}
+
+model HiloPlay {
+  id                    String      @id @default(uuid()) @db.Uuid
+  sessionId             String      @map("session_id") @db.Uuid
+  session               HiloSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  userId                String      @map("user_id") @db.Uuid
+  user                  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sequenceNumber        Int         @map("sequence_number")
+  previousCard          String      @map("previous_card")
+  previousRank          Int         @map("previous_rank")
+  choice                HiloChoice
+  predictionMultiplier  Decimal     @map("prediction_multiplier") @db.Decimal(10, 4)
+  nextCard              String      @map("next_card")
+  nextRank              Int         @map("next_rank")
+  result                HiloResult
+  multiplierAfterPlay   Decimal     @map("multiplier_after_play") @db.Decimal(10, 4)
+  cashoutAfterPlay      Decimal     @map("cashout_after_play") @db.Decimal(16, 4)
+  createdAt             DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([createdAt])
+  @@map("hilo_plays")
 }
 
 

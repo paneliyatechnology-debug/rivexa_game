@@ -6,10 +6,8 @@ import {
   Param,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { HiloService } from './hilo.service.js';
-import { JwtAuthGuard } from '../../auth/jwt-auth.guard.js';
 
 @Controller('hilo')
 export class HiloController {
@@ -21,9 +19,98 @@ export class HiloController {
       bodyUserId ||
       queryUserId ||
       (req.headers['x-user-id'] as string) ||
-      '00000000-0000-0000-0000-000000000000'
+      ''
     );
   }
+
+  // ─── CONTINUOUS PLAY SESSION ENDPOINTS ───
+
+  @Get('preview')
+  async getPreview(@Query('card') cardCode?: string) {
+    return this.hiloService.getInitialPreview(cardCode);
+  }
+
+  @Get('session/active')
+  async getActiveSession(
+    @Req() req: any,
+    @Query('userId') queryUserId?: string,
+    @Query('sessionId') querySessionId?: string,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getActiveSession(userId, querySessionId);
+  }
+
+  @Post('session/init')
+  async initSession(
+    @Req() req: any,
+    @Body('userId') bodyUserId?: string,
+    @Body('sessionId') bodySessionId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.initOrGetSession(userId, bodySessionId);
+  }
+
+  @Post('session/start')
+  async startSession(
+    @Req() req: any,
+    @Body('betAmount') betAmount: number,
+    @Body('sessionId') sessionId?: string,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.startSession(userId, betAmount, sessionId);
+  }
+
+  @Post('session/reset')
+  async resetSession(@Req() req: any, @Body('userId') bodyUserId?: string) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.resetOrNewSession(userId);
+  }
+
+  @Post('session/:sessionId/play')
+  async playPrediction(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Body('choice') choice: string,
+    @Body('betAmount') betAmount?: number,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.playPrediction(userId, sessionId, choice, betAmount);
+  }
+
+  @Post('session/:sessionId/cashout')
+  async cashoutSession(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.cashoutSession(userId, sessionId);
+  }
+
+  @Get('session/history')
+  async getSessionHistory(
+    @Req() req: any,
+    @Query('userId') queryUserId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getSessionHistory(userId, page ? Number(page) : 1, limit ? Number(limit) : 10);
+  }
+
+  @Get('session/:sessionId')
+  async getSessionDetails(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getSessionDetails(userId, sessionId);
+  }
+
+  // ─── LEGACY ROUND ENDPOINTS (Backwards Compatibility) ───
 
   @Post('round')
   async createRound(
@@ -54,7 +141,7 @@ export class HiloController {
     @Query('limit') limit?: number,
   ) {
     const userId = this.extractUserId(req, undefined, queryUserId);
-    return this.hiloService.getHistory(userId, page ? Number(page) : 1, limit ? Number(limit) : 20);
+    return this.hiloService.getHistory(userId, page ? Number(page) : 1, limit ? Number(limit) : 10);
   }
 
   @Get('round/:roundId')
@@ -90,6 +177,91 @@ export class GamesHiloController {
     );
   }
 
+  @Get('preview')
+  async getPreview(@Query('card') cardCode?: string) {
+    return this.hiloService.getInitialPreview(cardCode);
+  }
+
+  @Get('session/active')
+  async getActiveSession(
+    @Req() req: any,
+    @Query('userId') queryUserId?: string,
+    @Query('sessionId') querySessionId?: string,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getActiveSession(userId, querySessionId);
+  }
+
+  @Post('session/init')
+  async initSession(
+    @Req() req: any,
+    @Body('userId') bodyUserId?: string,
+    @Body('sessionId') bodySessionId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.initOrGetSession(userId, bodySessionId);
+  }
+
+  @Post('session/start')
+  async startSession(
+    @Req() req: any,
+    @Body('betAmount') betAmount: number,
+    @Body('sessionId') sessionId?: string,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.startSession(userId, betAmount, sessionId);
+  }
+
+  @Post('session/reset')
+  async resetSession(@Req() req: any, @Body('userId') bodyUserId?: string) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.resetOrNewSession(userId);
+  }
+
+  @Post('session/:sessionId/play')
+  async playPrediction(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Body('choice') choice: string,
+    @Body('betAmount') betAmount?: number,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.playPrediction(userId, sessionId, choice, betAmount);
+  }
+
+  @Post('session/:sessionId/cashout')
+  async cashoutSession(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Body('userId') bodyUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, bodyUserId);
+    return this.hiloService.cashoutSession(userId, sessionId);
+  }
+
+  @Get('session/history')
+  async getSessionHistory(
+    @Req() req: any,
+    @Query('userId') queryUserId?: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getSessionHistory(userId, page ? Number(page) : 1, limit ? Number(limit) : 20);
+  }
+
+  @Get('session/:sessionId')
+  async getSessionDetails(
+    @Req() req: any,
+    @Param('sessionId') sessionId: string,
+    @Query('userId') queryUserId?: string,
+  ) {
+    const userId = this.extractUserId(req, undefined, queryUserId);
+    return this.hiloService.getSessionDetails(userId, sessionId);
+  }
+
   @Post('round')
   async createRound(
     @Req() req: any,
@@ -137,3 +309,4 @@ export class GamesHiloController {
     return this.hiloService.getAdminStats();
   }
 }
+

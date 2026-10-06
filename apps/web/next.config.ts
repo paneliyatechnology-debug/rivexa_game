@@ -5,9 +5,14 @@ const nextConfig: NextConfig = {
   // Without this, Next.js 15+ blocks WS connections from non-localhost origins,
   // causing "ERR_INVALID_HTTP_RESPONSE" and the app to not function over network IP.
   allowedDevOrigins: [
+    "192.168.1.106",
     "192.168.1.112",
     "192.168.1.*",
+    "*.192.168.1.106",
     "*.192.168.1.112",
+    "192.168.*.*",
+    "10.*.*.*",
+    "172.*.*.*",
   ],
   async headers() {
     return [

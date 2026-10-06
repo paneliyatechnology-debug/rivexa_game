@@ -175,6 +175,14 @@ export class AdminController {
     return this.adminService.getGameControlCenter(id);
   }
 
+  @Post('games/:id/override')
+  async overrideGameResult(
+    @Param('id') id: string,
+    @Body('result') result: any,
+  ) {
+    return this.adminService.overrideGameResult(id, result);
+  }
+
   @Get('reports')
   async getFinancialReports(
     @Query('startDate') startDate?: string,

@@ -58,6 +58,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get coinFlipBet(): any { return (this.client as any).coinFlipBet; }
   get hiloRound(): any { return (this.client as any).hiloRound; }
   get hiloBet(): any { return (this.client as any).hiloBet; }
+  get hiloSession(): any { return (this.client as any).hiloSession; }
+  get hiloPlay(): any { return (this.client as any).hiloPlay; }
   get notification(): any { return this.client.notification; }
   get sport(): any { return (this.client as any).sport; }
   get competition(): any { return (this.client as any).competition; }

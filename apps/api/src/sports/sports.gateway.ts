@@ -76,7 +76,7 @@ export class SportsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.server.to(`match_${matchId}`).emit('cricket.score.updated', payload);
     this.server.to('sports_live_matches').emit('cricket.score.updated', payload);
-    this.server.emit('cricket.score.updated', payload);
+
   }
 
   broadcastBallCompleted(matchId: string, ballData: any) {
@@ -90,7 +90,7 @@ export class SportsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.server.to(`match_${matchId}`).emit('cricket.ball.completed', payload);
     this.server.to('sports_live_matches').emit('cricket.ball.completed', payload);
-    this.server.emit('cricket.ball.completed', payload);
+
   }
 
   broadcastMatchCompleted(matchId: string, matchData: any) {
@@ -103,6 +103,6 @@ export class SportsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.server.to(`match_${matchId}`).emit('cricket.match.completed', payload);
     this.server.to('sports_live_matches').emit('cricket.match.completed', payload);
-    this.server.emit('cricket.match.completed', payload);
+
   }
 }

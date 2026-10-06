@@ -76,7 +76,7 @@ export function SportsNavigation({
   const pathname = usePathname();
 
   return (
-    <div className="w-full bg-[#08132C]/90 backdrop-blur-md border-y border-white/10 shadow-lg">
+    <div className="w-full bg-[#08132C]/90 backdrop-blur-md border-y border-cyan-500/20 shadow-[0_4px_20px_rgba(0,0,0,0.4)]">
       <div className="max-w-7xl mx-auto px-4">
         <div className="flex items-center gap-2 overflow-x-auto py-2.5 scrollbar-none no-scrollbar select-none">
           {sports.map((sport) => {
@@ -87,18 +87,20 @@ export function SportsNavigation({
               <button
                 key={sport.id || sport.slug}
                 onClick={() => onSelectSport?.(sport.slug)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shrink-0 cursor-pointer ${
+                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all shrink-0 cursor-pointer ${
                   isActive
-                    ? 'bg-gradient-to-r from-[#397F32] to-[#579D43] text-white shadow-[0_0_15px_rgba(57,127,50,0.4)] border border-[#579D43]/60 scale-[1.02]'
-                    : 'bg-[#0E1C3E]/70 hover:bg-[#152754] text-[#B8C7E6] hover:text-white border border-white/5 hover:border-white/15'
+                    ? 'bg-gradient-to-r from-cyan-500 via-blue-600 to-cyan-500 text-white shadow-[0_0_20px_rgba(6,182,212,0.5)] border border-cyan-300/80 scale-[1.03]'
+                    : 'bg-[#0E1C3E]/80 hover:bg-[#152754] text-[#B8C7E6] hover:text-cyan-300 border border-white/10 hover:border-cyan-500/40 hover:shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? 'text-emerald-200' : 'text-[#00E5A0]'}`} />
-                <span className="whitespace-nowrap">{sport.name}</span>
+                <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-200 drop-shadow-[0_0_6px_rgba(6,182,212,0.8)]' : 'text-cyan-400'}`} />
+                <span className="whitespace-nowrap tracking-wide">{sport.name}</span>
                 {sport.matchCount !== undefined && sport.matchCount > 0 && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                      isActive ? 'bg-black/30 text-emerald-200' : 'bg-[#182B5C] text-[#00D9FF]'
+                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-extrabold ${
+                      isActive
+                        ? 'bg-slate-950/60 text-cyan-200 border border-cyan-400/40'
+                        : 'bg-[#182B5C] text-cyan-300 border border-cyan-500/20'
                     }`}
                   >
                     {sport.matchCount}

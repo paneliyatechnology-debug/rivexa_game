@@ -8,7 +8,7 @@ export class SportsProviderService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SportsProviderService.name);
   private syncIntervalHandle: NodeJS.Timeout | null = null;
   private isAutoSyncActive = true;
-  private syncIntervalMs = parseInt(process.env.CRICKET_API_SYNC_INTERVAL || '5000', 10);
+  private syncIntervalMs = parseInt(process.env.CRICKET_API_SYNC_INTERVAL || '300000', 10);
 
   constructor(
     private readonly db: DatabaseService,
@@ -76,8 +76,8 @@ export class SportsProviderService implements OnModuleInit, OnModuleDestroy {
       if (!this.cricketDataService) {
         return { success: false, message: 'CricketDataService not injected yet' };
       }
-      const matches = await this.cricketDataService.getCurrentMatches();
-      return { success: true, count: matches?.length || 0, matches };
+      const result = await this.cricketDataService.triggerManualSync();
+      return { success: result.success, count: result.count, sync: result };
     } catch (err: any) {
       this.logger.error('Failed syncing live provider data', err);
       return { success: false, error: err.message || String(err) };

@@ -92,6 +92,34 @@ export class CricketMarketsController {
     };
   }
 
+  @Get('bet-settings')
+  async getPublicBetSettings() {
+    const settings = this.marketsService.getBetSettings();
+    return {
+      success: true,
+      data: settings,
+    };
+  }
+
+  @Get('admin/bet-settings')
+  async getAdminBetSettings() {
+    const settings = this.marketsService.getBetSettings();
+    return {
+      success: true,
+      data: settings,
+    };
+  }
+
+  @Patch('admin/bet-settings')
+  async updateAdminBetSettings(@Body() body: any) {
+    const settings = await this.marketsService.updateBetSettings(body);
+    return {
+      success: true,
+      message: 'Sports & Bet settings updated successfully',
+      data: settings,
+    };
+  }
+
   @Get('admin/odd-even/settings')
   async getOddEvenSettings() {
     const settings = await this.marketsService.getOddEvenSettings();
@@ -136,6 +164,70 @@ export class CricketMarketsController {
     return {
       success: true,
       message: 'Markets generated/reset successfully',
+      data: result,
+    };
+  }
+
+  @Get('admin/matches/:matchId/odds')
+  async getMatchOddsConfig(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.getMatchOddsConfig(matchId);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Patch('admin/matches/:matchId/odds')
+  async updateMatchOddsConfig(
+    @Param('matchId') matchId: string,
+    @Body() body: { mode?: 'AUTO' | 'MANUAL'; winProbA?: number; winProbB?: number; oddsA?: number; oddsB?: number }
+  ) {
+    const data = await this.marketsService.updateMatchOddsConfig(matchId, body);
+    return {
+      success: true,
+      message: 'Match odds & win percentage configured successfully',
+      data,
+    };
+  }
+
+  @Get('admin/matches/:matchId/analytics')
+  async getMatchAnalytics(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.getMatchAnalytics(matchId);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Patch('admin/matches/:matchId/odd-even')
+  async updateMatchOddEven(
+    @Param('matchId') matchId: string,
+    @Body() body: { enabled?: boolean; rate?: number }
+  ) {
+    const data = await this.marketsService.updateMatchOddEven(matchId, body);
+    return {
+      success: true,
+      message: 'Match-wise Odd/Even settings updated successfully',
+      data,
+    };
+  }
+
+  @Post('admin/matches/:matchId/auto-generate-questions')
+  async autoGenerateMatchQuestions(@Param('matchId') matchId: string) {
+    const data = await this.marketsService.autoGenerateMatchQuestions(matchId);
+    return {
+      success: true,
+      message: 'AI dynamically generated team-wise questions for match successfully!',
+      data,
+    };
+  }
+
+  @Post('admin/matches/:matchId/auto-settle')
+  async autoSettleMatchMarkets(@Param('matchId') matchId: string) {
+    const result = await this.marketsService.autoSettleMatchMarkets(matchId);
+    return {
+      success: true,
+      message: `Auto-settlement completed: ${result.settledCount} bets settled, ${result.lockedCount} markets locked`,
       data: result,
     };
   }

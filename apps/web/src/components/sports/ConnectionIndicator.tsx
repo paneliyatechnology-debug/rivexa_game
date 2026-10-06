@@ -5,14 +5,16 @@ import { Wifi, WifiOff } from 'lucide-react';
 
 export function ConnectionIndicator({ isConnected }: { isConnected: boolean }) {
   return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#101C3A] border border-white/10 text-xs font-medium">
+    <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-[#101C3A] border border-white/10 text-xs font-medium">
       {isConnected ? (
         <>
-          <span className="relative flex h-2 w-2">
+          {/* Single pulsing dot — acts as the status indicator */}
+          <span className="relative flex h-2 w-2 shrink-0">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          <Wifi className="w-3.5 h-3.5 text-emerald-400" />
+          {/* WiFi icon only on sm+ to avoid visual clutter on mobile */}
+          <Wifi className="w-3.5 h-3.5 text-emerald-400 hidden sm:block" />
           <span className="text-emerald-300 hidden sm:inline">Live Sync</span>
         </>
       ) : (
@@ -24,3 +26,4 @@ export function ConnectionIndicator({ isConnected }: { isConnected: boolean }) {
     </div>
   );
 }
+

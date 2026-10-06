@@ -85,7 +85,17 @@ export default function SportsHomePage() {
     fetchMatches();
   }, [fetchMatches]);
 
-  // Handle real-time WebSocket live score updates smoothly
+  // ── Smart auto-refresh polling (Cricbuzz-style) ──────────────────────────
+  // Live tab: poll every 60s | Other tabs: poll every 5 min
+  useEffect(() => {
+    const intervalMs = activeTab === 'live' ? 60_000 : 5 * 60_000;
+    const timer = setInterval(() => {
+      fetchMatches();
+    }, intervalMs);
+    return () => clearInterval(timer);
+  }, [activeTab, fetchMatches]);
+
+  // Handle real-time WebSocket live score updates — also do a full HTTP refresh
   useEffect(() => {
     if (!liveUpdate) return;
     const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
@@ -93,6 +103,7 @@ export default function SportsHomePage() {
 
     if (!targetMatchId) return;
 
+    // Optimistic in-place update from WS event
     setCompetitions((prevComps) =>
       prevComps.map((comp) => ({
         ...comp,
@@ -104,15 +115,21 @@ export default function SportsHomePage() {
                 ...m.score,
                 ...newScore,
               },
+              status: newScore.status === 'LIVE' ? 'LIVE' : m.status,
             };
           }
           return m;
         }),
       }))
     );
-  }, [liveUpdate]);
+
+    // Full HTTP refresh shortly after to pick up any other match changes
+    const refreshTimer = setTimeout(() => fetchMatches(), 2000);
+    return () => clearTimeout(refreshTimer);
+  }, [liveUpdate, fetchMatches]);
 
   // Calculate overall dynamic match counts from API
+
   const currentSport = sports.find((s) => s.slug === activeSportSlug);
   const liveCount = currentSport?.matchCount?.live ?? 0;
   const upcomingCount = currentSport?.matchCount?.upcoming ?? 0;
@@ -145,17 +162,18 @@ export default function SportsHomePage() {
           />
 
           {/* Hero Banner */}
-          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#0C1F4D] via-[#0E2866] to-[#0A183D] border border-white/10 p-6 sm:p-8 shadow-2xl">
-            <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-gradient-to-br from-[#00E5A0]/20 to-[#00D9FF]/20 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#0E2254] via-[#09173D] to-[#06102B] border border-cyan-500/30 p-6 sm:p-8 shadow-[0_0_35px_rgba(6,182,212,0.18)]">
+            <div className="absolute -right-10 -bottom-10 w-80 h-80 bg-gradient-to-br from-cyan-400/25 via-blue-600/20 to-fuchsia-600/20 rounded-full blur-3xl pointer-events-none"></div>
+            <div className="absolute top-0 left-1/4 w-60 h-60 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none"></div>
             <div className="relative z-10 max-w-2xl space-y-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00E5A0]/15 text-[#00E5A0] text-xs font-bold border border-[#00E5A0]/30">
-                <Sparkles className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-cyan-500/15 text-cyan-300 text-xs font-extrabold border border-cyan-400/30 shadow-[0_0_12px_rgba(6,182,212,0.3)]">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
                 Live Sports Center
               </div>
-              <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight">
+              <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-[0_0_12px_rgba(255,255,255,0.3)]">
                 Cricket & Global Sports Hub
               </h1>
-              <p className="text-xs sm:text-sm text-[#B8C7E6] leading-relaxed">
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-medium">
                 Experience real-time match scores, ball-by-ball commentary, full scorecards, and statistical match insights for all international and domestic competitions.
               </p>
             </div>

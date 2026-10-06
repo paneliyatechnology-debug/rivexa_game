@@ -1798,37 +1798,6 @@ export default function HiloGame() {
                 </div>
               </div>
 
-              {/* Compact Result Alert Banner (if available) */}
-              <AnimatePresence>
-                {lastPlayResult && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={`py-1.5 px-3 rounded-xl border text-center flex items-center justify-between text-xs font-bold shadow-lg z-10 ${
-                      lastPlayResult.result === 'WIN'
-                        ? 'bg-emerald-950/80 border-[#00E5A0] text-[#00E5A0]'
-                        : 'bg-rose-950/80 border-[#FF416C] text-[#FF416C]'
-                    }`}
-                  >
-                    <span className="flex items-center gap-1.5 font-black">
-                      {lastPlayResult.result === 'WIN' ? '🎉 WIN!' : '💔 LOST'}
-                      <span className="font-normal opacity-90 text-[11px]">
-                        {lastPlayResult.choice === 'SAME'
-                          ? 'Equal Rank (14.99x)'
-                          : lastPlayResult.choice === 'UP'
-                          ? 'Higher Card'
-                          : 'Lower Card'}
-                      </span>
-                    </span>
-                    <span className="font-mono font-black text-xs">
-                      {lastPlayResult.result === 'WIN'
-                        ? `${lastPlayResult.multiplier.toFixed(2)}x (₹${Math.round(lastPlayResult.cashout)})`
-                        : `-₹${Math.abs(lastPlayResult.profit)}`}
-                    </span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
 
               {/* CARDS DISPLAY CONTAINER: CURRENT CARD & NEXT CARD SIDE-BY-SIDE IN 3-COLUMN GRID */}
               <div className="relative grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center justify-items-center gap-1 min-[360px]:gap-2 sm:gap-4 my-1 z-10 w-full px-1 sm:px-4 lg:px-6 max-w-full">

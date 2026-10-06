@@ -59,13 +59,13 @@ export function TestBetHistoryView({ onClose }: { onClose?: () => void }) {
       {/* Header */}
       <div className="flex items-center justify-between pb-3 border-b border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-[#287BFF]/20 text-[#00D9FF] flex items-center justify-center border border-[#287BFF]/30">
+          <div className="w-8 h-8 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center border border-cyan-500/30">
             <Ticket className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-extrabold text-base text-white tracking-wide">Test Bet History</h3>
-            <p className="text-[11px] text-[#7183A8]">
-              Non-Monetary Development & Testing Ledger
+            <h3 className="font-black text-base text-white tracking-wide">Sports Bet History</h3>
+            <p className="text-[11px] text-slate-400">
+              Live Sports Wager Ledger & Returns
             </p>
           </div>
         </div>
@@ -73,9 +73,9 @@ export function TestBetHistoryView({ onClose }: { onClose?: () => void }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => fetchHistory()}
-            className="p-2 bg-[#0C1A3E] hover:bg-[#152754] text-[#B8C7E6] hover:text-white rounded-xl text-xs transition-colors border border-white/5 cursor-pointer flex items-center gap-1.5 font-semibold"
+            className="p-2 bg-[#0C1A3E] hover:bg-[#152754] text-slate-300 hover:text-white rounded-xl text-xs transition-colors border border-white/10 cursor-pointer flex items-center gap-1.5 font-bold"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 text-cyan-400 ${isLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           {onClose && (
@@ -87,12 +87,6 @@ export function TestBetHistoryView({ onClose }: { onClose?: () => void }) {
             </button>
           )}
         </div>
-      </div>
-
-      {/* Test Mode Disclaimer */}
-      <div className="px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2 text-xs text-amber-300">
-        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-        <span>All bets listed below are virtual test bets. No real money or real wallet balances are involved.</span>
       </div>
 
       {/* Loading state */}

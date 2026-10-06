@@ -17,7 +17,7 @@ import { TestBetHistoryView } from '@/components/sports/TestBetHistoryView';
 import { useSportsSocket } from '@/hooks/useSportsSocket';
 import { getApiBaseUrl } from '@/lib/config';
 import { IMatch } from '@gaming-platform/types';
-import { RefreshCw, AlertCircle, ShieldAlert, History, Sparkles } from 'lucide-react';
+import { RefreshCw, AlertCircle, History, Sparkles } from 'lucide-react';
 
 export default function CricketMatchDetailPage({
   params,
@@ -44,7 +44,7 @@ export default function CricketMatchDetailPage({
   const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // WebSocket for Real-Time Match Events
-  const { isConnected, liveUpdate, ballEvent } = useSportsSocket(matchId);
+  const { isConnected, liveUpdate, ballEvent, connectionVersion } = useSportsSocket(matchId);
 
   // Fetch full match detail from NestJS API
   const fetchMatchDetail = useCallback(async () => {
@@ -92,19 +92,9 @@ export default function CricketMatchDetailPage({
           setCategories(json.data);
         }
       }
-    } catch (e) {
-      // Fallback default categories
-      setCategories([
-        { id: '1', slug: 'all', name: 'All Markets', sortOrder: 1 },
-        { id: '2', slug: 'main', name: 'Main', sortOrder: 2 },
-        { id: '3', slug: 'quick', name: 'Quick', sortOrder: 3 },
-        { id: '4', slug: 'first_innings', name: '1st Innings', sortOrder: 4 },
-        { id: '5', slug: 'overs', name: 'Overs', sortOrder: 5 },
-        { id: '6', slug: 'players', name: 'Players', sortOrder: 6 },
-        { id: '7', slug: 'dismissal', name: 'Dismissal', sortOrder: 7 },
-        { id: '8', slug: 'odd_even', name: 'Odd/Even', sortOrder: 8 },
-        { id: '9', slug: 'session', name: 'Session / Fancy', sortOrder: 9 },
-      ]);
+    } catch {
+      // Categories are database-managed; do not substitute production data in the client.
+      setCategories([]);
     }
   }, []);
 
@@ -112,6 +102,11 @@ export default function CricketMatchDetailPage({
     fetchMatchDetail();
     fetchCategories();
   }, [fetchMatchDetail, fetchCategories]);
+
+  // A reconnect can have missed notifications: recover from the API/DB once.
+  useEffect(() => {
+    if (connectionVersion > 1) void fetchMatchDetail();
+  }, [connectionVersion, fetchMatchDetail]);
 
   useEffect(() => {
     if (activeTab === 'markets') {
@@ -163,48 +158,34 @@ export default function CricketMatchDetailPage({
     const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
     if (targetMatchId && targetMatchId !== matchId) return;
 
-    const newScore = liveUpdate.score || liveUpdate;
-    setMatch((prev: IMatch | null) => {
-      if (!prev) return prev;
-      return {
-        ...prev,
-        score: {
-          ...prev.score,
-          ...newScore,
-        },
-      };
-    });
-  }, [liveUpdate, matchId]);
+    // Socket payload is only a notification. Re-read canonical state from our API/DB.
+    void fetchMatchDetail();
+    if (activeTab === 'markets') {
+      void fetchMarkets(activeCategorySlug);
+    }
+  }, [liveUpdate, matchId, fetchMatchDetail, activeTab, activeCategorySlug, fetchMarkets]);
 
-  // Handle new ball commentary events in real-time
+  // Commentary events follow the same DB-first refresh path.
   useEffect(() => {
-    if (!ballEvent || ballEvent.matchId !== matchId || !ballEvent.commentary) return;
-    setMatch((prev: IMatch | null) => {
-      if (!prev) return prev;
-      const existing = prev.commentaries || [];
-      return {
-        ...prev,
-        score: ballEvent.score || prev.score,
-        commentaries: [ballEvent.commentary, ...existing],
-      };
-    });
-  }, [ballEvent, matchId]);
+    if (!ballEvent || ballEvent.matchId !== matchId) return;
+    void fetchMatchDetail();
+  }, [ballEvent, matchId, fetchMatchDetail]);
 
   return (
-    <div className="w-full min-h-screen bg-[#050B20] text-[#F5F7FF] flex flex-col font-sans pt-[84px]">
+    <div className="w-full h-screen bg-gradient-to-b from-[#0F1C45] via-[#0A1433] to-[#070E24] text-[#F5F7FF] flex flex-col font-sans pt-[78px] sm:pt-[84px] overflow-hidden">
       <TopHeader />
 
-      <div className="flex-1 flex w-full max-w-[1600px] mx-auto px-2 sm:px-4 py-4 gap-6 lg:pl-[220px] xl:pl-60">
+      <div className="flex-1 flex w-full max-w-[1600px] mx-auto px-1.5 sm:px-4 py-1 sm:py-3 gap-3 lg:gap-6 lg:pl-[220px] xl:pl-60 overflow-hidden h-[calc(100vh-78px)] sm:h-[calc(100vh-84px)]">
         {/* Left Sidebar */}
         <DesktopSidebar activeCategory="sports" />
 
-        {/* Center Main Content */}
-        <main className="flex-1 min-w-0 space-y-4">
+        {/* Center Main Column */}
+        <main className="flex-1 min-w-0 h-full overflow-y-auto custom-scrollbar space-y-3 sm:space-y-4 pr-1 sm:pr-2 pb-28 sm:pb-24">
           {/* Loading State */}
           {isLoading && (
             <div className="space-y-4 py-8">
-              <div className="h-48 w-full bg-[#08132E] border border-white/10 rounded-2xl animate-pulse"></div>
-              <div className="h-64 w-full bg-[#08132E] border border-white/10 rounded-2xl animate-pulse"></div>
+              <div className="h-48 w-full bg-[#132554] border border-white/10 rounded-2xl animate-pulse"></div>
+              <div className="h-64 w-full bg-[#132554] border border-white/10 rounded-2xl animate-pulse"></div>
             </div>
           )}
 
@@ -228,22 +209,27 @@ export default function CricketMatchDetailPage({
           {/* Match Content */}
           {!isLoading && match && (
             <>
+              {/* 1. COMPACT MATCH STADIUM HEADER (Scrolls out naturally when scrolling down) */}
               <MatchDetailHeader match={match} isConnected={isConnected} />
 
-              <MatchDetailTabs activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab)} />
+              {/* 2. STICKY SUB-TABS BAR (Sticks to top when scrolled!) */}
+              <div className="sticky top-0 z-30 bg-[#0F1F4D]/95 backdrop-blur-md border-y border-cyan-500/30 shadow-md py-1 rounded-xl">
+                <MatchDetailTabs activeTab={activeTab} onTabChange={(tab) => setActiveTab(tab)} />
+              </div>
 
-              <div className="pt-2 pb-12 space-y-4">
+              {/* 3. INNER TAB CONTENT (Scrolls smoothly under the sticky tabs bar) */}
+              <div className="pt-1 space-y-4">
                 {activeTab === 'summary' && <MatchSummaryPanel match={match} />}
 
                 {/* MARKETS & ODDS TAB */}
                 {activeTab === 'markets' && (
                   <div className="space-y-4">
-                    {/* Header bar with Test Bet History toggle */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 bg-[#08132E] border border-white/10 p-3 sm:p-4 rounded-2xl">
+                    {/* Header bar with My Bet History toggle */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-[#132657] border border-cyan-500/30 p-3 sm:p-4 rounded-2xl shadow-md">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="font-extrabold text-white text-sm">Cricket Betting Markets</span>
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/30 flex items-center gap-1">
-                          <ShieldAlert className="w-3 h-3" /> Test Mode
+                        <span className="font-black text-white text-sm tracking-wide">Cricket Betting Markets</span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-extrabold text-[10px] border border-cyan-400/40 shadow-[0_0_10px_rgba(6,182,212,0.3)]">
+                          Live Odds
                         </span>
                       </div>
 
@@ -251,12 +237,12 @@ export default function CricketMatchDetailPage({
                         onClick={() => setShowHistory(!showHistory)}
                         className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                           showHistory
-                            ? 'bg-[#287BFF] text-white shadow-md'
-                            : 'bg-[#0E1C3E] hover:bg-[#152754] text-[#B8C7E6] border border-white/10'
+                            ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-black shadow-[0_0_12px_rgba(6,182,212,0.4)]'
+                            : 'bg-[#18316E] hover:bg-[#1F3D8A] text-[#C2D4F8] hover:text-white border border-white/10'
                         }`}
                       >
                         <History className="w-4 h-4" />
-                        {showHistory ? 'Hide Bet History' : 'Test Bet History'}
+                        {showHistory ? 'Hide Bet History' : 'My Bet History'}
                       </button>
                     </div>
 
@@ -273,16 +259,16 @@ export default function CricketMatchDetailPage({
                     )}
 
                     {/* Non-monetary Exchange Disclaimer */}
-                    <div className="bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-indigo-900/30 border border-blue-500/20 rounded-xl p-3 text-xs text-blue-200/90 flex items-center gap-2">
+                    {/* <div className="bg-gradient-to-r from-blue-900/40 via-indigo-900/50 to-blue-900/40 border border-blue-400/30 rounded-xl p-3 text-xs text-blue-200 flex items-center gap-2 shadow-sm">
                       <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                       <span>
-                        Odds displayed are derived from live CricAPI scoring data & statistical probability models. Back (Blue) odds are active for test placement. Lay (Pink) exchange liquidity is disabled for unsupported providers.
+                        Odds displayed are derived from live CricAPI scoring data & statistical probability models. Back odds are active for real test placement.
                       </span>
-                    </div>
+                    </div> */}
 
                     {/* Loading Markets */}
                     {isLoadingMarkets && (
-                      <div className="py-12 text-center text-xs text-slate-400 space-y-2">
+                      <div className="py-12 text-center text-xs text-slate-300 space-y-2">
                         <div className="w-6 h-6 border-2 border-[#00D9FF] border-t-transparent rounded-full animate-spin mx-auto"></div>
                         <p>Loading market categories & odds...</p>
                       </div>
@@ -304,12 +290,18 @@ export default function CricketMatchDetailPage({
                     {/* Market Cards List */}
                     {!isLoadingMarkets && !marketsError && (
                       <div className="space-y-4">
-                        {markets.length === 0 ? (
-                          <div className="py-12 bg-[#08132E] border border-white/10 rounded-2xl text-center text-xs text-slate-400">
-                            No markets available in this category currently.
-                          </div>
-                        ) : (
-                          markets.map((m) => {
+                        {(() => {
+                          const visibleMarkets = markets.filter(
+                            (m) => m.status !== 'CLOSED' && m.status !== 'SETTLED'
+                          );
+                          if (visibleMarkets.length === 0) {
+                            return (
+                              <div className="py-12 bg-[#132657] border border-white/10 rounded-2xl text-center text-xs text-slate-300">
+                                No active betting markets available in this category currently.
+                              </div>
+                            );
+                          }
+                          return visibleMarkets.map((m) => {
                             const selectedInThisMarket = betSlipItems.find((it) => it.marketId === m.id);
                             return (
                               <MarketCardView
@@ -317,10 +309,11 @@ export default function CricketMatchDetailPage({
                                 market={m}
                                 onSelectOdds={handleSelectOdds}
                                 selectedSelectionId={selectedInThisMarket?.selectionId}
+                                matchId={matchId}
                               />
                             );
-                          })
-                        )}
+                          });
+                        })()}
                       </div>
                     )}
                   </div>

@@ -23,6 +23,7 @@ export function TopHeader({
   onSearch?: (q: string) => void;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user: authUser, balance: contextBalance, logout } = useAuth();
   const displayBalance = balance !== undefined ? balance : contextBalance;
 
@@ -293,15 +294,17 @@ export function TopHeader({
         </div>
       </div>
 
-      {/* ── Announcement marquee bar ── */}
-      <div className="bg-[#050B20]/90 border-t border-white/5 px-4 py-1.5 flex items-center gap-3 overflow-hidden">
-        <div className="flex items-center gap-1 text-[#FFC928] font-black shrink-0 bg-[#FFC928]/10 px-2 py-0.5 rounded-full border border-[#FFC928]/20 text-[10px]">
+      {/* ── Announcement ticker bar (single-copy, no duplicate) ── */}
+      <div className="bg-[#050B20]/95 border-t border-white/5 py-[5px] flex items-center gap-2 overflow-hidden shadow-inner relative">
+        {/* Sticky LIVE badge — always visible on the left */}
+        <div className="flex items-center gap-1 text-[#FFC928] font-black shrink-0 bg-[#FFC928]/15 px-2 py-0.5 rounded-full border border-[#FFC928]/30 text-[9px] sm:text-[10px] ml-2.5 sm:ml-4 z-10">
           🔥 LIVE
         </div>
-        <div className="overflow-hidden whitespace-nowrap flex-1">
-          <div className="inline-block animate-marquee text-[11px] text-[#A8B9DE] font-medium">
-            🎉&nbsp;Player***41 won ₹3,450 on Mines!&nbsp;&nbsp;🚀&nbsp;Rocket hit 52.4x on JetX Flight!&nbsp;&nbsp;🎁&nbsp;Deposit now & get 100% Welcome Bonus!&nbsp;&nbsp;👑&nbsp;Player***99 cashed out ₹12,450!&nbsp;&nbsp;
-          </div>
+        {/* Scrolling area — overflow hidden, single text span, no duplicate */}
+        <div className="overflow-hidden flex-1 min-w-0 relative">
+          <span className="animate-ticker text-[10px] sm:text-[11px] text-[#A8B9DE] font-medium">
+            🎉 Player***41 won ₹3,450 on Mines!    🚀 Rocket hit 52.4x on JetX Flight!    🎁 Deposit now &amp; get 100% Welcome Bonus!    👑 Player***99 cashed out ₹12,450!
+          </span>
         </div>
       </div>
     </header>

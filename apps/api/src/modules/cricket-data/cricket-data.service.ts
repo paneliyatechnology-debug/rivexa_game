@@ -91,7 +91,7 @@ export class CricketDataService implements OnModuleInit, OnModuleDestroy {
   public async cleanCorruptedMatchData() {
     try {
       const matches = await this.db.match.findMany({
-        include: { teamA: true, teamB: true, scores: true },
+        include: { teamA: true, teamB: true, score: true },
       });
 
       for (const m of matches) {

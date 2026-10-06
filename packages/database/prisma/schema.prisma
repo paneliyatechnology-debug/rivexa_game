@@ -816,6 +816,8 @@ model Match {
   scoreSnapshots CricketScoreSnapshot[]
   cricketMarkets CricketMarket[]
   testBets       TestBet[]
+  stateSnapshots CricketMatchStateSnapshot[]
+  marketEvents   MarketEvent[]
   createdAt     DateTime          @default(now()) @map("created_at")
   updatedAt     DateTime          @updatedAt @map("updated_at")
 
@@ -844,39 +846,206 @@ model CricketMarket {
   providerMarketId  String?                @map("provider_market_id")
   name              String                 // e.g. "Match Winner", "Match Total Runs Odd/Even"
   marketType        String                 @map("market_type") // MATCH_WINNER, TOSS_WINNER, TOTAL_RUNS, OVER_RUNS, PLAYER_RUNS, DISMISSAL_METHOD, ODD_EVEN, SESSION_FANCY, EXCHANGE_BACK_LAY
-  status            String                 @default("OPEN") // OPEN, SUSPENDED, CLOSED, SETTLED
+  status            String                 @default("OPEN") // OPEN, SUSPENDED, CLOSED, SETTLED, VOID, CANCELLED, EXPIRED
+  suspendReason     String?                @map("suspend_reason")
   sourceType        String                 @default("STATISTICAL_MODEL") @map("source_type") // LIVE_PROVIDER, BOOKMAKER, EXCHANGE, DEVELOPMENT_MOCK, STATISTICAL_MODEL
   lineThreshold     Float?                 @map("line_threshold")
   isBackLay         Boolean                @default(false) @map("is_back_lay")
   sortOrder         Int                    @default(0) @map("sort_order")
+  margin            Decimal                @default(0.04) @db.Decimal(6, 4)
+  tenantId          String?                @map("tenant_id") @db.Uuid
+  configurationId   String?                @map("configuration_id")
+  version           Int                    @default(1)
+  sequence          Int                    @default(1)
+  openedAt          DateTime?              @map("opened_at")
+  suspendedAt       DateTime?              @map("suspended_at")
+  closedAt          DateTime?              @map("closed_at")
+  settledAt         DateTime?              @map("settled_at")
+  expiresAt         DateTime?              @map("expires_at")
   selections        CricketMarketSelection[]
   testBetSelections TestBetSelection[]
+  priceSnapshots    MarketPriceSnapshot[]
+  exposureSnapshots MarketExposureSnapshot[]
+  events            MarketEvent[]
+  overrides         MarketOverride[]
   createdAt         DateTime               @default(now()) @map("created_at")
   updatedAt         DateTime               @updatedAt @map("updated_at")
 
   @@index([matchId, categorySlug])
   @@index([marketType])
+  @@index([tenantId])
   @@map("cricket_markets")
 }
 
 model CricketMarketSelection {
-  id                  String             @id @default(uuid()) @db.Uuid
-  marketId            String             @map("market_id") @db.Uuid
-  market              CricketMarket      @relation(fields: [marketId], references: [id], onDelete: Cascade)
-  providerSelectionId String?            @map("provider_selection_id")
-  name                String             // e.g. "India", "West Indies", "Odd", "Even", "Over 175.5"
-  backPrice           Decimal            @map("back_price") @db.Decimal(8, 2)
-  layPrice            Decimal?           @map("lay_price") @db.Decimal(8, 2)
-  backLiquidity       Decimal?           @map("back_liquidity") @db.Decimal(12, 2)
-  layLiquidity        Decimal?           @map("lay_liquidity") @db.Decimal(12, 2)
-  status              String             @default("ACTIVE") // ACTIVE, SUSPENDED, WON, LOST, VOID
-  sortOrder           Int                @default(0) @map("sort_order")
+  id                  String                 @id @default(uuid()) @db.Uuid
+  marketId            String                 @map("market_id") @db.Uuid
+  market              CricketMarket          @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  providerSelectionId String?                @map("provider_selection_id")
+  name                String                 // e.g. "India", "West Indies", "Odd", "Even", "Over 175.5"
+  backPrice           Decimal                @map("back_price") @db.Decimal(8, 2)
+  layPrice            Decimal?               @map("lay_price") @db.Decimal(8, 2)
+  backLiquidity       Decimal?               @map("back_liquidity") @db.Decimal(12, 2)
+  layLiquidity        Decimal?               @map("lay_liquidity") @db.Decimal(12, 2)
+  status              String                 @default("ACTIVE") // ACTIVE, SUSPENDED, WON, LOST, VOID
+  fairProbability     Decimal?               @map("fair_probability") @db.Decimal(6, 4)
+  fairOdds            Decimal?               @map("fair_odds") @db.Decimal(8, 2)
+  displayedOdds       Decimal?               @map("displayed_odds") @db.Decimal(8, 2)
+  exposure            Decimal?               @default(0) @map("exposure") @db.Decimal(16, 4)
+  version             Int                    @default(1)
+  liability           Decimal?               @default(0) @map("liability") @db.Decimal(16, 4)
+  sortOrder           Int                    @default(0) @map("sort_order")
   testBetSelections   TestBetSelection[]
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
+  priceSnapshots      MarketPriceSnapshot[]
+  exposureSnapshots   MarketExposureSnapshot[]
+  overrides           MarketOverride[]
+  createdAt           DateTime               @default(now()) @map("created_at")
+  updatedAt           DateTime               @updatedAt @map("updated_at")
 
   @@index([marketId])
   @@map("cricket_market_selections")
+}
+
+model CricketMatchStateSnapshot {
+  id               String    @id @default(uuid()) @db.Uuid
+  matchId          String    @map("match_id") @db.Uuid
+  match            Match     @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  innings          Int       @default(1)
+  battingTeam      String?   @map("batting_team")
+  bowlingTeam      String?   @map("bowling_team")
+  runs             Int       @default(0)
+  wickets          Int       @default(0)
+  overs            Float     @default(0.0)
+  balls            Int       @default(0)
+  target           Int?
+  requiredRuns     Int?      @map("required_runs")
+  requiredRate     Float?    @map("required_rate")
+  currentRunRate   Float?    @map("current_run_rate")
+  lastEvent        String?   @map("last_event")
+  sourceProvider   String    @default("CRICAPI") @map("source_provider")
+  providerEventId  String?   @map("provider_event_id")
+  providerTimestamp DateTime? @map("provider_timestamp")
+  receivedAt       DateTime  @default(now()) @map("received_at")
+
+  @@index([matchId, receivedAt])
+  @@map("cricket_match_state_snapshots")
+}
+
+model MarketPriceSnapshot {
+  id                  String                 @id @default(uuid()) @db.Uuid
+  marketId            String                 @map("market_id") @db.Uuid
+  market              CricketMarket          @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  selectionId         String                 @map("selection_id") @db.Uuid
+  selection           CricketMarketSelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  oldOdds             Decimal                @map("old_odds") @db.Decimal(8, 2)
+  newOdds             Decimal                @map("new_odds") @db.Decimal(8, 2)
+  fairOdds            Decimal                @map("fair_odds") @db.Decimal(8, 2)
+  probability         Decimal                @db.Decimal(6, 4)
+  margin              Decimal                @db.Decimal(6, 4)
+  exposure            Decimal                @default(0) @db.Decimal(16, 4)
+  liability           Decimal                @default(0) @db.Decimal(16, 4)
+  reason              String                 // BALL_UPDATE, WICKET, RUN_UPDATE, TARGET_UPDATE, EXPOSURE_CHANGE, ADMIN_OVERRIDE, SYSTEM_RECALCULATION
+  source              String                 @default("SYSTEM_RECALCULATION") // MODEL_UPDATE, SCORE_UPDATE, EXPOSURE_UPDATE, ADMIN_OVERRIDE, MARKET_CONFIG_UPDATE, PROVIDER_UPDATE, MANUAL_SUSPENSION, RESUME
+  pricingVersion      String                 @default("v1.0.0") @map("pricing_version")
+  matchStateReference String?                @map("match_state_reference")
+  tenantId            String?                @map("tenant_id") @db.Uuid
+  createdAt           DateTime               @default(now()) @map("created_at")
+
+  @@index([marketId, selectionId, createdAt])
+  @@index([tenantId])
+  @@map("market_price_snapshots")
+}
+
+model MarketExposureSnapshot {
+  id                 String                 @id @default(uuid()) @db.Uuid
+  marketId           String                 @map("market_id") @db.Uuid
+  market             CricketMarket          @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  selectionId        String                 @map("selection_id") @db.Uuid
+  selection          CricketMarketSelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  totalStake         Decimal                @map("total_stake") @db.Decimal(16, 4)
+  potentialLiability Decimal                @map("potential_liability") @db.Decimal(16, 4)
+  netExposure        Decimal                @map("net_exposure") @db.Decimal(16, 4)
+  tenantId           String?                @map("tenant_id") @db.Uuid
+  timestamp          DateTime               @default(now())
+
+  @@index([marketId, timestamp])
+  @@index([tenantId])
+  @@map("market_exposure_snapshots")
+}
+
+model MarketEvent {
+  id              String         @id @default(uuid()) @db.Uuid
+  matchId         String         @map("match_id") @db.Uuid
+  match           Match          @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  marketId        String?        @map("market_id") @db.Uuid
+  market          CricketMarket? @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  eventType       String         @map("event_type") // CREATED, SUSPENDED, RESUMED, CLOSED, SETTLED, OVERRIDE
+  eventData       Json           @default("{}") @map("event_data")
+  providerEventId String?        @map("provider_event_id")
+  provider        String?
+  sequenceNumber  Int?           @map("sequence_number")
+  processedAt     DateTime       @default(now()) @map("processed_at")
+
+  @@index([matchId, processedAt])
+  @@map("market_events")
+}
+
+model MarketOverride {
+  id           String                 @id @default(uuid()) @db.Uuid
+  marketId     String                 @map("market_id") @db.Uuid
+  market       CricketMarket          @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  selectionId  String                 @map("selection_id") @db.Uuid
+  selection    CricketMarketSelection @relation(fields: [selectionId], references: [id], onDelete: Cascade)
+  previousOdds Decimal                @map("previous_odds") @db.Decimal(8, 2)
+  newOdds      Decimal                @map("new_odds") @db.Decimal(8, 2)
+  reason       String
+  adminUserId  String?                @map("admin_user_id") @db.Uuid
+  tenantId     String?                @map("tenant_id") @db.Uuid
+  status       String                 @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  expiresAt    DateTime?              @map("expires_at")
+  createdAt    DateTime               @default(now()) @map("created_at")
+
+  @@index([marketId, selectionId])
+  @@index([tenantId])
+  @@map("market_overrides")
+}
+
+model MarketConfiguration {
+  id                       String   @id @default(uuid()) @db.Uuid
+  tenantId                 String?  @unique @map("tenant_id") @db.Uuid
+  marketType               String   @default("ALL") @map("market_type")
+  defaultMargin            Decimal  @default(0.04) @map("default_margin") @db.Decimal(6, 4)
+  minOdds                  Decimal  @default(1.01) @map("min_odds") @db.Decimal(8, 2)
+  maxOdds                  Decimal  @default(500.00) @map("max_odds") @db.Decimal(8, 2)
+  minStake                 Decimal  @default(10.00) @map("min_stake") @db.Decimal(16, 4)
+  maxStake                 Decimal  @default(100000.00) @map("max_stake") @db.Decimal(16, 4)
+  autoSuspendStaleSec      Int      @default(60) @map("auto_suspend_stale_sec")
+  maxLiabilityPerSelection Decimal  @default(500000.00) @map("max_liability_per_selection") @db.Decimal(16, 4)
+  riskAdjustmentEnabled    Boolean  @default(true) @map("risk_adjustment_enabled")
+  metadata                 Json     @default("{}")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+
+  @@map("market_configurations")
+}
+
+model MarketAuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String?  @map("tenant_id") @db.Uuid
+  actorId    String?  @map("actor_id") @db.Uuid
+  actorRole  String?  @map("actor_role")
+  entityType String   @map("entity_type") // MARKET, SELECTION, OVERRIDE, CONFIGURATION
+  entityId   String?  @map("entity_id")
+  action     String   // CREATE, UPDATE, DELETE, OVERRIDE, SUSPEND, RESUME, CONFIG_CHANGE, PRICE_CHANGE
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  reason     String?
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@map("market_audit_logs")
 }
 
 model TestBet {

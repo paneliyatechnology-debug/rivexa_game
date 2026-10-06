@@ -398,20 +398,23 @@ export class SportsService implements OnModuleInit {
     let oddsB = 2.00;
     let isManual = false;
 
-    if (winnerMarket && winnerMarket.sourceType === 'ADMIN_OVERRIDE' && winnerMarket.selections.length >= 2) {
-      isManual = true;
-      oddsA = Number(winnerMarket.selections[0].backPrice) || 1.75;
-      oddsB = Number(winnerMarket.selections[1].backPrice) || 2.15;
-      winProbA = Math.round(100 / oddsA);
-      winProbB = Math.round(100 / oddsB);
-    } else if (winnerMarket && winnerMarket.selections.length >= 2) {
-      oddsA = Number(winnerMarket.selections[0].backPrice) || 1.75;
-      oddsB = Number(winnerMarket.selections[1].backPrice) || 2.15;
-      winProbA = Math.round(100 / oddsA);
-      winProbB = Math.round(100 / oddsB);
+    if (winnerMarket && winnerMarket.selections.length >= 2) {
+      isManual = winnerMarket.sourceType === 'ADMIN_OVERRIDE';
+      const selA = winnerMarket.selections[0].backPrice ? Number(winnerMarket.selections[0].backPrice) : null;
+      const selB = winnerMarket.selections[1].backPrice ? Number(winnerMarket.selections[1].backPrice) : null;
+
+      if (selA && selB && selA > 1 && selB > 1) {
+        oddsA = selA;
+        oddsB = selB;
+        const rawProbA = 1 / selA;
+        const rawProbB = 1 / selB;
+        const totalRaw = rawProbA + rawProbB;
+        winProbA = Math.round((rawProbA / totalRaw) * 100);
+        winProbB = 100 - winProbA;
+      }
     } else if (match.score) {
-      const crr = match.score.currentRunRate || 8.0;
-      const rrr = match.score.requiredRunRate || 8.0;
+      const crr = match.score.currentRunRate || 6.0;
+      const rrr = match.score.requiredRunRate || 6.0;
       const diff = crr - rrr;
       winProbA = Math.min(95, Math.max(5, Math.round(50 + diff * 5)));
       winProbB = 100 - winProbA;

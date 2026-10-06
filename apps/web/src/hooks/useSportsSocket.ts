@@ -8,7 +8,12 @@ export function useSportsSocket(matchId?: string): {
   isConnected: boolean;
   liveUpdate: any;
   ballEvent: any;
+  oddsUpdate: any;
   matchCompletedEvent: any;
+  marketClosedEvent: any;
+  marketSettledEvent: any;
+  marketUpdatedEvent: any;
+  matchMarketsClosedEvent: any;
   socket: Socket | null;
   connectionVersion: number;
 } {
@@ -17,12 +22,17 @@ export function useSportsSocket(matchId?: string): {
   const [connectionVersion, setConnectionVersion] = useState(0);
   const [liveUpdate, setLiveUpdate] = useState<any>(null);
   const [ballEvent, setBallEvent] = useState<any>(null);
+  const [oddsUpdate, setOddsUpdate] = useState<any>(null);
   const [matchCompletedEvent, setMatchCompletedEvent] = useState<any>(null);
+  const [marketClosedEvent, setMarketClosedEvent] = useState<any>(null);
+  const [marketSettledEvent, setMarketSettledEvent] = useState<any>(null);
+  const [marketUpdatedEvent, setMarketUpdatedEvent] = useState<any>(null);
+  const [matchMarketsClosedEvent, setMatchMarketsClosedEvent] = useState<any>(null);
 
   useEffect(() => {
     const seenEvents = new Set<string>();
     const acceptEvent = (eventName: string, payload: any) => {
-      const eventId = [eventName, payload?.eventId || payload?.matchId || 'all', payload?.updatedAt || ''].join(':');
+      const eventId = [eventName, payload?.eventId || payload?.matchId || 'all', payload?.marketId || '', payload?.selectionId || '', payload?.updatedAt || ''].join(':');
       if (seenEvents.has(eventId)) return false;
       seenEvents.add(eventId);
       if (seenEvents.size > 200) seenEvents.clear();
@@ -64,8 +74,32 @@ export function useSportsSocket(matchId?: string): {
       if (acceptEvent('cricket.ball.completed', data)) setBallEvent(data);
     });
 
+    socket.on('cricket.odds.updated', (data: any) => {
+      if (acceptEvent('cricket.odds.updated', data)) setOddsUpdate(data);
+    });
+
     socket.on('cricket.match.completed', (data: any) => {
-      setMatchCompletedEvent(data);
+      if (acceptEvent('cricket.match.completed', data)) setMatchCompletedEvent(data);
+    });
+
+    socket.on('market.closed', (data: any) => {
+      if (acceptEvent('market.closed', data)) setMarketClosedEvent(data);
+    });
+
+    socket.on('market.settled', (data: any) => {
+      if (acceptEvent('market.settled', data)) setMarketSettledEvent(data);
+    });
+
+    socket.on('market.updated', (data: any) => {
+      if (acceptEvent('market.updated', data)) setMarketUpdatedEvent(data);
+    });
+
+    socket.on('match.completed', (data: any) => {
+      if (acceptEvent('match.completed', data)) setMatchCompletedEvent(data);
+    });
+
+    socket.on('match.markets.closed', (data: any) => {
+      if (acceptEvent('match.markets.closed', data)) setMatchMarketsClosedEvent(data);
     });
 
     return () => {
@@ -80,7 +114,12 @@ export function useSportsSocket(matchId?: string): {
     isConnected,
     liveUpdate,
     ballEvent,
+    oddsUpdate,
     matchCompletedEvent,
+    marketClosedEvent,
+    marketSettledEvent,
+    marketUpdatedEvent,
+    matchMarketsClosedEvent,
     socket: socketRef.current,
     connectionVersion,
   };

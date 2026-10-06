@@ -54,6 +54,20 @@ export function TestBetHistoryView({ onClose }: { onClose?: () => void }) {
     fetchHistory();
   }, [fetchHistory]);
 
+  useEffect(() => {
+    const handleBetPlaced = () => {
+      fetchHistory();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('betPlaced', handleBetPlaced);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('betPlaced', handleBetPlaced);
+      }
+    };
+  }, [fetchHistory]);
+
   return (
     <div className="bg-gradient-to-br from-[#091533] to-[#050C20] border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl space-y-4">
       {/* Header */}

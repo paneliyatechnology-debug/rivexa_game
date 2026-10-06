@@ -103,6 +103,57 @@ export class SportsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     };
     this.server.to(`match_${matchId}`).emit('cricket.match.completed', payload);
     this.server.to('sports_live_matches').emit('cricket.match.completed', payload);
+  }
 
+  broadcastOddsUpdate(matchId: string, oddsData: {
+    matchId: string;
+    marketId: string;
+    selectionId: string;
+    oldOdds: number;
+    newOdds: number;
+    modelProbability: number;
+    finalOdds: number;
+    matchStateVersion: number;
+    priceVersion: string;
+    updatedAt: string;
+  }) {
+    if (!this.server) return;
+    console.log(`[SOCKET] event=cricket.odds.updated matchId=${matchId} marketId=${oddsData.marketId}`);
+    this.server.to(`match_${matchId}`).emit('cricket.odds.updated', oddsData);
+    this.server.to(`market_${oddsData.marketId}`).emit('cricket.odds.updated', oddsData);
+    this.server.to('sports_live_matches').emit('cricket.odds.updated', oddsData);
+  }
+
+  broadcastMarketSuspended(matchId: string, marketId: string, reason: string) {
+    if (!this.server) return;
+    const payload = { matchId, marketId, reason, timestamp: new Date().toISOString() };
+    console.log(`[SOCKET] event=cricket.market.suspended marketId=${marketId}`);
+    this.server.to(`match_${matchId}`).emit('cricket.market.suspended', payload);
+    this.server.to(`market_${marketId}`).emit('cricket.market.suspended', payload);
+  }
+
+  broadcastMarketResumed(matchId: string, marketId: string) {
+    if (!this.server) return;
+    const payload = { matchId, marketId, timestamp: new Date().toISOString() };
+    console.log(`[SOCKET] event=cricket.market.resumed marketId=${marketId}`);
+    this.server.to(`match_${matchId}`).emit('cricket.market.resumed', payload);
+    this.server.to(`market_${marketId}`).emit('cricket.market.resumed', payload);
+  }
+
+  broadcastMarketSettled(matchId: string, payload: { marketId: string; winnerSelectionName?: string; winningSelectionName?: string; matchId: string }) {
+    if (!this.server) return;
+    const data = { ...payload, timestamp: new Date().toISOString() };
+    console.log(`[SOCKET] event=market.settled marketId=${payload.marketId}`);
+    this.server.to(`match_${matchId}`).emit('market.settled', data);
+    this.server.to(`market_${payload.marketId}`).emit('market.settled', data);
+    this.server.to('sports_live_matches').emit('market.settled', data);
+  }
+
+  broadcastMarketUpdated(matchId: string, payload: any) {
+    if (!this.server) return;
+    const data = { ...payload, timestamp: new Date().toISOString() };
+    console.log(`[SOCKET] event=market.updated matchId=${matchId} marketId=${payload.marketId}`);
+    this.server.to(`match_${matchId}`).emit('market.updated', data);
+    this.server.to('sports_live_matches').emit('market.updated', data);
   }
 }

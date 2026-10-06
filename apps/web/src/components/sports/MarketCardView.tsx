@@ -29,7 +29,11 @@ export interface ICricketMarketData {
 
 export interface MarketCardViewProps {
   market: ICricketMarketData;
-  onSelectOdds: (selection: IMarketSelection, market: ICricketMarketData) => void;
+  onSelectOdds: (
+    selection: IMarketSelection,
+    market: ICricketMarketData,
+    customStake?: number
+  ) => void;
   selectedSelectionId?: string;
   matchId?: string;
 }
@@ -121,6 +125,13 @@ export function MarketCardView({
           },
         }));
         await refreshBalance();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('betPlaced', {
+              detail: { matchId: matchId || 'cricket-match-1', betReference: json.betReference },
+            })
+          );
+        }
         setTimeout(() => {
           setExpandedQuickBetId(null);
           setMessageMap((prev) => ({ ...prev, [sel.id]: null }));
@@ -283,7 +294,7 @@ export function MarketCardView({
                   >
                     {/* Left Side: Outcome Name & Status (Click adds to Bet Slip) */}
                     <div
-                      onClick={() => !isDisabled && onSelectOdds(sel, market)}
+                      onClick={() => !isDisabled && onSelectOdds(sel, market, quickStakeMap[sel.id])}
                       className="flex-1 flex items-center gap-2.5 min-w-0 pr-3 cursor-pointer group py-0.5"
                       title="Click to add selection to Bet Slip"
                     >
@@ -447,7 +458,7 @@ export function MarketCardView({
                         <button
                           type="button"
                           onClick={() => {
-                            onSelectOdds(sel, market);
+                            onSelectOdds(sel, market, currentStake);
                             setExpandedQuickBetId(null);
                           }}
                           className="py-3 px-3.5 rounded-xl bg-[#122452] hover:bg-[#18316E] border border-cyan-500/30 text-cyan-200 hover:text-white text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer shrink-0"

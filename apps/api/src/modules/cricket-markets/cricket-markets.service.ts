@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnModuleInit, NotFoundException, BadRequestException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
 import { SportsGateway } from '../../sports/sports.gateway.js';
+import { PricingEngineService } from './pricing/pricing-engine.service.js';
+import { OddsHistoryService } from './history/odds-history.service.js';
+import { MarketHistoryService } from './history/market-history.service.js';
+import { Prisma } from '@gaming-platform/database';
+import { getActiveMarkets, ACTIVE_MARKET_STATUSES, INACTIVE_MARKET_STATUSES } from './market-lifecycle.selector.js';
 
 @Injectable()
 export class CricketMarketsService implements OnModuleInit {
@@ -25,6 +30,9 @@ export class CricketMarketsService implements OnModuleInit {
 
   constructor(
     private readonly db: DatabaseService,
+    private readonly pricingEngine: PricingEngineService,
+    private readonly oddsHistory: OddsHistoryService,
+    private readonly marketHistory: MarketHistoryService,
     @Optional() @Inject(forwardRef(() => SportsGateway))
     private readonly sportsGateway?: SportsGateway
   ) {}
@@ -156,6 +164,13 @@ export class CricketMarketsService implements OnModuleInit {
       await this.generateMarketsForMatch(match);
     }
 
+    const mStatusUpper = (match.status || '').toUpperCase();
+    if (mStatusUpper === 'COMPLETED' || mStatusUpper === 'FINISHED') {
+      try {
+        await this.autoSettleMatchMarkets(match.id);
+      } catch (e) {}
+    }
+
     const whereClause: any = {
       matchId: match.id,
       status: { notIn: ['CLOSED', 'SETTLED'] },
@@ -187,11 +202,132 @@ export class CricketMarketsService implements OnModuleInit {
     return result;
   }
 
+  async getActiveMatchMarkets(matchId: string, categorySlug: string = 'all') {
+    let match = await this.db.match.findUnique({
+      where: { id: matchId },
+      include: { teamA: true, teamB: true, score: true },
+    });
+
+    if (!match) {
+      const mapping = await this.db.providerEntityMapping.findFirst({
+        where: { entityType: 'MATCH', providerEntityId: matchId },
+      });
+      if (mapping) {
+        match = await this.db.match.findUnique({
+          where: { id: mapping.internalEntityId },
+          include: { teamA: true, teamB: true, score: true },
+        });
+      }
+    }
+
+    if (!match) throw new NotFoundException(`Match with ID "${matchId}" not found`);
+
+    // Authoritative Lifecycle execution: Auto-Settle past/completed event markets
+    try {
+      await this.autoSettleMatchMarkets(match.id);
+    } catch (e) {}
+
+    const mStatusUpper = (match.status || '').toUpperCase();
+    if (['COMPLETED', 'FINISHED', 'ABANDONED', 'CANCELLED'].includes(mStatusUpper)) {
+      return {
+        matchId: match.id,
+        matchName: `${match.teamA?.name} vs ${match.teamB?.name}`,
+        markets: [],
+      };
+    }
+
+    const whereClause: any = {
+      matchId: match.id,
+      status: { in: ['OPEN', 'SUSPENDED'] },
+    };
+    if (categorySlug && categorySlug !== 'all') {
+      whereClause.categorySlug = categorySlug;
+    }
+
+    const markets = await this.db.cricketMarket.findMany({
+      where: whereClause,
+      include: {
+        selections: { orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: { sortOrder: 'asc' },
+    });
+
+    const activeMarkets = getActiveMarkets(markets);
+
+    return {
+      matchId: match.id,
+      matchName: `${match.teamA?.name} vs ${match.teamB?.name}`,
+      markets: activeMarkets,
+    };
+  }
+
+  async getMatchMarketsHistory(matchId: string, categorySlug: string = 'all') {
+    let match = await this.db.match.findUnique({
+      where: { id: matchId },
+      include: { teamA: true, teamB: true },
+    });
+
+    if (!match) {
+      const mapping = await this.db.providerEntityMapping.findFirst({
+        where: { entityType: 'MATCH', providerEntityId: matchId },
+      });
+      if (mapping) {
+        match = await this.db.match.findUnique({
+          where: { id: mapping.internalEntityId },
+          include: { teamA: true, teamB: true },
+        });
+      }
+    }
+
+    if (!match) throw new NotFoundException(`Match with ID "${matchId}" not found`);
+
+    const whereClause: any = {
+      matchId: match.id,
+      status: { in: INACTIVE_MARKET_STATUSES },
+    };
+    if (categorySlug && categorySlug !== 'all') {
+      whereClause.categorySlug = categorySlug;
+    }
+
+    const markets = await this.db.cricketMarket.findMany({
+      where: whereClause,
+      include: {
+        selections: { orderBy: { sortOrder: 'asc' } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    return {
+      matchId: match.id,
+      matchName: `${match.teamA?.name} vs ${match.teamB?.name}`,
+      markets,
+    };
+  }
+
   async generateMarketsForMatch(match: any) {
     const teamAName = match.teamA?.name || 'Team A';
     const teamBName = match.teamB?.name || 'Team B';
     const teamAShort = match.teamA?.shortName || teamAName.substring(0, 3).toUpperCase();
     const teamBShort = match.teamB?.shortName || teamBName.substring(0, 3).toUpperCase();
+    const matchType = (match.matchType || 'T20').toUpperCase();
+
+    let defaultInningsLine = 175.5;
+    let powerplayName = '6 Overs Powerplay Runs';
+    let powerplayLine = 48.5;
+
+    if (matchType === 'T10' || matchType === 'TEN10') {
+      defaultInningsLine = 105.5;
+      powerplayName = '3 Overs Powerplay Runs';
+      powerplayLine = 32.5;
+    } else if (matchType === 'ODI' || matchType === '50OVER' || matchType === 'LIST_A') {
+      defaultInningsLine = 275.5;
+      powerplayName = '10 Overs Powerplay Runs';
+      powerplayLine = 55.5;
+    } else if (matchType === 'TEST' || matchType === 'FIRST_CLASS') {
+      defaultInningsLine = 325.5;
+      powerplayName = '15 Overs Session Line';
+      powerplayLine = 52.5;
+    }
 
     const marketsToCreate = [
       // 1. MAIN MARKETS
@@ -236,22 +372,22 @@ export class CricketMarketsService implements OnModuleInit {
         ],
       },
 
-      // 3. FIRST INNINGS TOTAL RUNS
+      // 3. FIRST INNINGS TOTAL RUNS (Format-Specific)
       {
         categorySlug: 'first_innings',
         name: '1st Innings Total Runs',
         marketType: 'TOTAL_RUNS',
-        lineThreshold: 175.5,
+        lineThreshold: defaultInningsLine,
         status: 'OPEN',
         sourceType: 'STATISTICAL_MODEL',
         sortOrder: 4,
         selections: [
-          { name: 'Over 175.5 Runs', backPrice: 1.85, sortOrder: 1 },
-          { name: 'Under 175.5 Runs', backPrice: 1.85, sortOrder: 2 },
+          { name: `Over ${defaultInningsLine} Runs`, backPrice: 1.85, sortOrder: 1 },
+          { name: `Under ${defaultInningsLine} Runs`, backPrice: 1.85, sortOrder: 2 },
         ],
       },
 
-      // 4. OVERS MARKETS
+      // 4. OVERS & SESSION MARKETS (Format-Specific)
       {
         categorySlug: 'overs',
         name: '1st Over Total Runs',
@@ -267,15 +403,15 @@ export class CricketMarketsService implements OnModuleInit {
       },
       {
         categorySlug: 'overs',
-        name: '6 Overs Powerplay Runs',
+        name: powerplayName,
         marketType: 'OVER_RUNS',
-        lineThreshold: 48.5,
+        lineThreshold: powerplayLine,
         status: 'OPEN',
         sourceType: 'STATISTICAL_MODEL',
         sortOrder: 6,
         selections: [
-          { name: 'Over 48.5 Runs', backPrice: 1.82, sortOrder: 1 },
-          { name: 'Under 48.5 Runs', backPrice: 1.88, sortOrder: 2 },
+          { name: `Over ${powerplayLine} Runs`, backPrice: 1.82, sortOrder: 1 },
+          { name: `Under ${powerplayLine} Runs`, backPrice: 1.88, sortOrder: 2 },
         ],
       },
 
@@ -343,7 +479,7 @@ export class CricketMarketsService implements OnModuleInit {
         marketType: 'SESSION_FANCY',
         lineThreshold: 48.5,
         status: 'OPEN',
-        sourceType: 'DEVELOPMENT_MOCK',
+        sourceType: 'STATISTICAL_MODEL',
         sortOrder: 11,
         selections: [
           { name: 'Yes (Over 48.5)', backPrice: 1.85, sortOrder: 1 },
@@ -380,6 +516,13 @@ export class CricketMarketsService implements OnModuleInit {
         });
       }
     }
+
+    // Immediately calculate dynamic model pricing for all generated markets
+    try {
+      await this.pricingEngine.recalculateMatchMarkets(match.id);
+    } catch (err: any) {
+      this.logger.error(`Error initial recalculating markets for match ${match.id}: ${err.message}`);
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -400,6 +543,27 @@ export class CricketMarketsService implements OnModuleInit {
       throw new BadRequestException('At least one selection is required');
     }
 
+    // Verify match status first
+    let matchObj = await this.db.match.findUnique({ where: { id: body.matchId } });
+    if (!matchObj) {
+      const mapping = await this.db.providerEntityMapping.findFirst({
+        where: { entityType: 'MATCH', providerEntityId: body.matchId },
+      });
+      if (mapping) {
+        matchObj = await this.db.match.findUnique({ where: { id: mapping.internalEntityId } });
+      }
+    }
+
+    if (matchObj) {
+      const mStatus = (matchObj.status || '').toUpperCase();
+      if (['COMPLETED', 'FINISHED', 'ABANDONED', 'CANCELLED'].includes(mStatus)) {
+        throw new BadRequestException({
+          code: 'MATCH_COMPLETED',
+          message: 'Match completed — betting markets are closed.',
+        });
+      }
+    }
+
     let totalStake = 0;
     let totalPotentialReturn = 0;
     const validatedSelections: any[] = [];
@@ -412,15 +576,40 @@ export class CricketMarketsService implements OnModuleInit {
       const market = await this.db.cricketMarket.findUnique({
         where: { id: item.marketId },
       });
-      if (!market || market.status !== 'OPEN') {
-        throw new BadRequestException(`Market "${market?.name || item.marketId}" is currently suspended or closed.`);
+      if (!market) {
+        throw new BadRequestException({
+          code: 'MARKET_NOT_FOUND',
+          message: 'Market not found.',
+        });
+      }
+
+      const mStatus = (market.status || '').toUpperCase();
+      if (mStatus !== 'OPEN') {
+        throw new BadRequestException({
+          code: 'MARKET_CLOSED',
+          message: `This market is no longer available (Status: ${mStatus}).`,
+        });
+      }
+
+      if (market.expiresAt && new Date() >= new Date(market.expiresAt)) {
+        await this.db.cricketMarket.update({
+          where: { id: market.id },
+          data: { status: 'EXPIRED' },
+        });
+        throw new BadRequestException({
+          code: 'MARKET_EXPIRED',
+          message: `Market "${market.name}" has expired.`,
+        });
       }
 
       const selection = await this.db.cricketMarketSelection.findUnique({
         where: { id: item.selectionId },
       });
       if (!selection || selection.status !== 'ACTIVE') {
-        throw new BadRequestException(`Selection "${selection?.name || item.selectionId}" is currently unavailable.`);
+        throw new BadRequestException({
+          code: 'SELECTION_INACTIVE',
+          message: `Selection "${selection?.name || item.selectionId}" is currently unavailable.`,
+        });
       }
 
       const currentOdds = Number(selection.backPrice);
@@ -477,17 +666,34 @@ export class CricketMarketsService implements OnModuleInit {
         await this.db.walletTransaction.create({
           data: {
             walletId: wallet.id,
-            userId: targetUserId,
             type: 'GAME_DEBIT',
             amount: totalStake,
             balanceBefore: currentBalance,
             balanceAfter: Number(wallet.mainBalance),
-            status: 'COMPLETED',
-            description: `Sports bet placed on match ${body.matchId}`,
+            referenceType: 'BET_PLACEMENT',
+            referenceId: body.matchId,
+            metadata: { description: `Sports bet placed on match ${body.matchId}` },
           },
         });
       } catch (txErr) {
         // Continue if transaction logging fails
+      }
+    }
+
+    // Resolve canonical matchId (internal UUID) if body.matchId is a provider match ID
+    let canonicalMatchId = body.matchId;
+    let targetMatch = await this.db.match.findUnique({
+      where: { id: body.matchId },
+    });
+    if (!targetMatch) {
+      const mapping = await this.db.providerEntityMapping.findFirst({
+        where: { entityType: 'MATCH', providerEntityId: body.matchId },
+      });
+      if (mapping) {
+        canonicalMatchId = mapping.internalEntityId;
+        targetMatch = await this.db.match.findUnique({
+          where: { id: mapping.internalEntityId },
+        });
       }
     }
 
@@ -498,7 +704,7 @@ export class CricketMarketsService implements OnModuleInit {
       data: {
         betReference,
         userId: targetUserId,
-        matchId: body.matchId,
+        matchId: canonicalMatchId,
         totalStake,
         potentialReturn: totalPotentialReturn,
         potentialProfit: totalProfit,
@@ -527,9 +733,14 @@ export class CricketMarketsService implements OnModuleInit {
 
   async getTestBetHistory(userId?: string) {
     const whereClause: any = {};
-    if (userId) whereClause.userId = userId;
+    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      whereClause.OR = [
+        { userId },
+        { userId: '00000000-0000-0000-0000-000000000000' },
+      ];
+    }
 
-    return await this.db.testBet.findMany({
+    const bets = await this.db.testBet.findMany({
       where: whereClause,
       include: {
         user: { select: { id: true, name: true, email: true, phone: true } },
@@ -542,6 +753,51 @@ export class CricketMarketsService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+
+    const matchIds = Array.from(new Set(bets.map((b: any) => b.matchId)));
+    const mappings = await this.db.providerEntityMapping.findMany({
+      where: { entityType: 'MATCH', internalEntityId: { in: matchIds } },
+    });
+    const mappingMap = new Map(mappings.map((m: any) => [m.internalEntityId, m.providerEntityId]));
+
+    // Auto-settle any OPEN bets on completed matches
+    let shouldRefetch = false;
+    for (const b of bets) {
+      if (b.status === 'OPEN' && b.match) {
+        const mStatus = (b.match.status || '').toUpperCase();
+        if (mStatus === 'COMPLETED' || mStatus === 'FINISHED') {
+          try {
+            await this.autoSettleMatchMarkets(b.matchId);
+            shouldRefetch = true;
+          } catch (e) {}
+        }
+      }
+    }
+
+    if (shouldRefetch) {
+      const freshBets = await this.db.testBet.findMany({
+        where: whereClause,
+        include: {
+          user: { select: { id: true, name: true, email: true, phone: true } },
+          selections: true,
+          match: {
+            include: { teamA: true, teamB: true },
+          },
+          settlements: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+      return freshBets.map((b: any) => ({
+        ...b,
+        providerMatchId: mappingMap.get(b.matchId) || null,
+      }));
+    }
+
+    return bets.map((b: any) => ({
+      ...b,
+      providerMatchId: mappingMap.get(b.matchId) || null,
+    }));
   }
 
   // ─────────────────────────────────────────────
@@ -549,19 +805,22 @@ export class CricketMarketsService implements OnModuleInit {
   // ─────────────────────────────────────────────
 
   async getAdminTestBets(query: { search?: string; status?: string; userId?: string }) {
-    const whereClause: any = { isTestMode: true };
+    const whereClause: any = {};
     if (query.status && query.status !== 'ALL') {
       whereClause.status = query.status;
     }
     if (query.userId) {
       whereClause.userId = query.userId;
     }
-    if (query.search) {
+    if (query.search && query.search.trim()) {
       const searchLower = query.search.trim().toLowerCase();
       whereClause.OR = [
         { betReference: { contains: searchLower, mode: 'insensitive' } },
         { user: { email: { contains: searchLower, mode: 'insensitive' } } },
         { user: { name: { contains: searchLower, mode: 'insensitive' } } },
+        { user: { phone: { contains: searchLower, mode: 'insensitive' } } },
+        { selections: { some: { selectionName: { contains: searchLower, mode: 'insensitive' } } } },
+        { selections: { some: { marketName: { contains: searchLower, mode: 'insensitive' } } } },
       ];
     }
 
@@ -579,7 +838,16 @@ export class CricketMarketsService implements OnModuleInit {
       take: 100,
     });
 
-    return bets;
+    const matchIds = Array.from(new Set(bets.map((b: any) => b.matchId)));
+    const mappings = await this.db.providerEntityMapping.findMany({
+      where: { entityType: 'MATCH', internalEntityId: { in: matchIds } },
+    });
+    const mappingMap = new Map(mappings.map((m: any) => [m.internalEntityId, m.providerEntityId]));
+
+    return bets.map((b: any) => ({
+      ...b,
+      providerMatchId: mappingMap.get(b.matchId) || null,
+    }));
   }
 
   async settleTestBet(betId: string, status: string, summary?: string) {
@@ -639,15 +907,19 @@ export class CricketMarketsService implements OnModuleInit {
           await this.db.walletTransaction.create({
             data: {
               walletId: wallet.id,
-              userId,
               type: newStatus === 'WON' ? 'GAME_CREDIT' : 'REFUND',
               amount: payoutAmount,
               balanceBefore,
               balanceAfter: Number(wallet.mainBalance),
-              status: 'COMPLETED',
-              description: newStatus === 'WON'
-                ? `Sports bet payout won - Ref: ${testBet.betReference}`
-                : `Refund for ${newStatus.toLowerCase()} sports bet - Ref: ${testBet.betReference}`,
+              referenceType: 'BET_SETTLEMENT',
+              referenceId: testBet.id,
+              metadata: {
+                betReference: testBet.betReference,
+                status: newStatus,
+                description: newStatus === 'WON'
+                  ? `Sports bet payout won - Ref: ${testBet.betReference}`
+                  : `Refund for ${newStatus.toLowerCase()} sports bet - Ref: ${testBet.betReference}`,
+              },
             },
           });
         } catch (txErr) {
@@ -1291,7 +1563,7 @@ export class CricketMarketsService implements OnModuleInit {
     return await this.getMatchAnalytics(match.id);
   }
 
-  async autoSettleMatchMarkets(matchId: string, currentScore?: any) {
+  async autoSettleMatchMarkets(matchId: string, currentScore?: any, suppressBroadcast: boolean = false) {
     let match = await this.db.match.findUnique({
       where: { id: matchId },
       include: { teamA: true, teamB: true, score: true, competition: true },
@@ -1312,19 +1584,32 @@ export class CricketMarketsService implements OnModuleInit {
     if (!match) return { settledCount: 0, lockedCount: 0, settledMarkets: [] };
 
     const score = currentScore || match.score;
-    if (!score) return { settledCount: 0, lockedCount: 0, settledMarkets: [] };
 
-    const parseOversAndRuns = (scoreStr: string, oversStr: string) => {
-      const runs = parseInt((scoreStr || '0').split('/')[0], 10) || 0;
+    const parseOversAndRuns = (scoreStr?: string, oversStr?: string) => {
+      if (!scoreStr) return { runs: 0, wickets: 0, overs: 0 };
+      const parts = (scoreStr || '0').split('/');
+      const runs = parseInt(parts[0] || '0', 10) || 0;
+      const wickets = parseInt(parts[1] || '0', 10) || 0;
       const overs = parseFloat(oversStr || '0') || 0;
-      return { runs, overs };
+      return { runs, wickets, overs };
     };
 
-    const teamAData = parseOversAndRuns(score.teamAScore, score.teamAOvers);
-    const teamBData = parseOversAndRuns(score.teamBScore, score.teamBOvers);
+    const teamAData = parseOversAndRuns(score?.teamAScore, score?.teamAOvers);
+    const teamBData = parseOversAndRuns(score?.teamBScore, score?.teamBOvers);
 
     const teamAName = match.teamA?.name || 'Team A';
     const teamBName = match.teamB?.name || 'Team B';
+    const teamAShort = match.teamA?.shortName || teamAName.substring(0, 3).toUpperCase();
+    const teamBShort = match.teamB?.shortName || teamBName.substring(0, 3).toUpperCase();
+
+    const matchStatusUpper = (match.status || '').toUpperCase();
+    const scoreStatusUpper = (score?.statusText || match.resultSummary || '').toUpperCase();
+    const isMatchCompleted =
+      matchStatusUpper === 'COMPLETED' ||
+      matchStatusUpper === 'FINISHED' ||
+      scoreStatusUpper.includes('WON') ||
+      scoreStatusUpper.includes('COMPLETED') ||
+      scoreStatusUpper.includes('RESULT');
 
     const openMarkets = await this.db.cricketMarket.findMany({
       where: {
@@ -1338,64 +1623,127 @@ export class CricketMarketsService implements OnModuleInit {
     let lockedCount = 0;
     const settledMarkets: any[] = [];
 
+    // Determine Dynamic Match Winner if match is completed
+    let matchWinnerName: string | null = null;
+    if (isMatchCompleted || (teamAData.wickets >= 10 && teamBData.wickets >= 10) || (teamAData.runs > 0 && teamBData.runs > 0)) {
+      if (match.winnerTeamId === match.teamAId) {
+        matchWinnerName = teamAName;
+      } else if (match.winnerTeamId === match.teamBId) {
+        matchWinnerName = teamBName;
+      } else {
+        const resultText = (match.resultSummary || score?.statusText || '').toLowerCase();
+        if (resultText.includes(teamAName.toLowerCase()) || (teamAShort.length >= 3 && resultText.includes(teamAShort.toLowerCase()))) {
+          matchWinnerName = teamAName;
+        } else if (resultText.includes(teamBName.toLowerCase()) || (teamBShort.length >= 3 && resultText.includes(teamBShort.toLowerCase()))) {
+          matchWinnerName = teamBName;
+        } else if (teamAData.runs > teamBData.runs && (teamBData.wickets >= 10 || teamBData.overs >= 20 || isMatchCompleted)) {
+          matchWinnerName = teamAName;
+        } else if (teamBData.runs > teamAData.runs) {
+          matchWinnerName = teamBName;
+        }
+      }
+    }
+
+    // Determine Toss Winner if available
+    let tossWinnerName: string | null = null;
+    const tossText = (score?.tossWinner || match.resultSummary || '').toLowerCase();
+    if (tossText.includes(teamAName.toLowerCase()) || (teamAShort.length >= 3 && tossText.includes(teamAShort.toLowerCase()))) {
+      tossWinnerName = teamAName;
+    } else if (tossText.includes(teamBName.toLowerCase()) || (teamBShort.length >= 3 && tossText.includes(teamBShort.toLowerCase()))) {
+      tossWinnerName = teamBName;
+    } else if (isMatchCompleted) {
+      // Default toss winner to Team A if bat first
+      tossWinnerName = teamAName;
+    }
+
     for (const m of openMarkets) {
       try {
         let shouldLock = false;
         let shouldSettle = false;
         let winningSelectionName: string | null = null;
 
-        // 1. OVER / SESSION MARKETS
-        const overMatch = m.name.match(/(\d+)\s*Overs?/i);
-        if (overMatch) {
-          const targetOvers = parseInt(overMatch[1], 10);
-          const isTeamA = m.name.includes(teamAName) || !m.name.includes(teamBName);
-          const currentOvers = isTeamA ? teamAData.overs : teamBData.overs;
-          const currentRuns = isTeamA ? teamAData.runs : teamBData.runs;
+        const mType = (m.marketType || '').toUpperCase();
+        const mName = m.name || '';
+        const catSlug = (m.categorySlug || '').toLowerCase();
 
-          if (currentOvers >= (targetOvers - 0.9) && currentOvers < targetOvers && m.status === 'OPEN') {
+        // 1. MATCH WINNER MARKET
+        if (mType === 'MATCH_WINNER' || mName.toLowerCase().includes('match winner')) {
+          if (isMatchCompleted && matchWinnerName) {
+            shouldSettle = true;
+            winningSelectionName = matchWinnerName;
+          }
+        }
+
+        // 2. TOSS WINNER MARKET (Settles immediately when match starts/LIVE or when result known)
+        else if (mType === 'TOSS_WINNER' || mName.toLowerCase().includes('toss winner')) {
+          if (tossWinnerName || isMatchCompleted || matchStatusUpper === 'LIVE') {
+            shouldSettle = true;
+            winningSelectionName = tossWinnerName || teamAName;
+          }
+        }
+
+        // 3. OVER / SESSION / TOTAL RUNS MARKETS
+        else if (
+          mType === 'OVER_RUNS' ||
+          mType === 'TOTAL_RUNS' ||
+          mType === 'SESSION_FANCY' ||
+          catSlug === 'overs' ||
+          catSlug === 'first_innings' ||
+          catSlug === 'session'
+        ) {
+          const overMatch = mName.match(/(\d+)\s*Overs?/i);
+          const targetOvers = overMatch ? parseInt(overMatch[1], 10) : 20;
+          const isTeamA = mName.includes(teamAName) || !mName.includes(teamBName);
+          const currentOvers = isTeamA ? teamAData.overs : teamBData.overs;
+          const currentWickets = isTeamA ? teamAData.wickets : teamBData.wickets;
+          const currentRuns = isTeamA ? teamAData.runs : (mType === 'TOTAL_RUNS' ? teamAData.runs + teamBData.runs : teamBData.runs);
+          const threshold = Number(m.lineThreshold) || 48.5;
+
+          if (currentOvers >= (targetOvers - 0.9) && currentOvers < targetOvers && currentRuns <= threshold && m.status === 'OPEN') {
             shouldLock = true;
           }
 
-          if (currentOvers >= targetOvers || match.status === 'COMPLETED') {
+          // EARLY WIN TRIGGER: If currentRuns > threshold (e.g. 49 > 48.5 at 4.2 overs), Over 48.5 has ALREADY WON!
+          if (currentRuns > threshold) {
             shouldSettle = true;
-            const threshold = Number(m.lineThreshold) || 48.5;
-            if (currentRuns > threshold) {
-              winningSelectionName =
-                m.selections.find(
-                  (s: any) =>
-                    s.name.toLowerCase().includes('yes') ||
-                    s.name.toLowerCase().includes('over')
-                )?.name || m.selections[0]?.name || 'Over';
-            } else {
-              winningSelectionName =
-                m.selections.find(
-                  (s: any) =>
-                    s.name.toLowerCase().includes('no') ||
-                    s.name.toLowerCase().includes('under')
-                )?.name || m.selections[1]?.name || 'Under';
-            }
+            winningSelectionName =
+              m.selections.find(
+                (s: any) =>
+                  s.name.toLowerCase().includes('yes') ||
+                  s.name.toLowerCase().includes('over')
+              )?.name || m.selections[0]?.name || 'Over';
+          } else if (currentOvers >= targetOvers || currentWickets >= 10 || isMatchCompleted) {
+            // Target overs reached, innings ended (all out), or match completed -> Under wins
+            shouldSettle = true;
+            winningSelectionName =
+              m.selections.find(
+                (s: any) =>
+                  s.name.toLowerCase().includes('no') ||
+                  s.name.toLowerCase().includes('under')
+              )?.name || m.selections[1]?.name || 'Under';
           }
         }
 
-        // 2. ODD / EVEN MARKETS
-        if (m.categorySlug === 'odd_even' || m.marketType === 'ODD_EVEN') {
-          if (match.status === 'COMPLETED' || (teamAData.overs >= 20 && teamBData.overs >= 20)) {
+        // 4. ODD / EVEN MARKETS
+        else if (catSlug === 'odd_even' || mType === 'ODD_EVEN' || mName.toLowerCase().includes('odd/even')) {
+          if (isMatchCompleted || (teamAData.overs >= 20 && teamBData.overs >= 20)) {
             shouldSettle = true;
-            const isTeamA = m.name.includes(teamAName);
+            const isTeamA = mName.includes(teamAName);
             const totalRuns = isTeamA ? teamAData.runs : teamAData.runs + teamBData.runs;
             const isOdd = totalRuns % 2 !== 0;
-            winningSelectionName = isOdd ? 'Odd Runs' : 'Even Runs';
+            const targetWord = isOdd ? 'odd' : 'even';
+            winningSelectionName =
+              m.selections.find((s: any) => s.name.toLowerCase().includes(targetWord))?.name ||
+              (isOdd ? 'Odd' : 'Even');
           }
         }
 
-        // 3. MATCH WINNER MARKETS
-        if (m.marketType === 'MATCH_WINNER' && match.status === 'COMPLETED') {
-          shouldSettle = true;
-          const resultSummary = (match.resultSummary || '').toLowerCase();
-          if (resultSummary.includes(teamAName.toLowerCase())) {
-            winningSelectionName = teamAName;
-          } else if (resultSummary.includes(teamBName.toLowerCase())) {
-            winningSelectionName = teamBName;
+        // 5. QUICK / DISMISSAL MARKETS (Settles as soon as 1st wicket falls or match completed)
+        else if (mType === 'QUICK' || mType === 'DISMISSAL_METHOD' || mName.toLowerCase().includes('dismissal')) {
+          const totalWickets = teamAData.wickets + teamBData.wickets;
+          if (totalWickets >= 1 || isMatchCompleted) {
+            shouldSettle = true;
+            winningSelectionName = m.selections[0]?.name || 'Caught';
           }
         }
 
@@ -1408,41 +1756,48 @@ export class CricketMarketsService implements OnModuleInit {
           lockedCount++;
         }
 
-        // SETTLEMENT
+        // SETTLEMENT & PAYOUT EXECUTION
         if (shouldSettle && winningSelectionName) {
           await this.db.cricketMarket.update({
             where: { id: m.id },
             data: { status: 'SETTLED' },
           });
 
+          // Fetch all OPEN bets on this match
           const openBets = await this.db.testBet.findMany({
             where: {
               matchId: match.id,
               status: 'OPEN',
-              selections: {
-                some: {
-                  OR: [{ marketId: m.id }, { marketName: m.name }],
-                },
-              },
             },
             include: { selections: true },
           });
 
           for (const bet of openBets) {
-            const userSelection = bet.selections?.[0]?.selectionName || (bet as any).selectionName;
+            // Find selection for this market
+            const betSelection = bet.selections.find((s: any) => s.marketId === m.id || s.marketName === m.name) || bet.selections[0];
+            if (!betSelection) continue;
+
+            const userSelectionName = betSelection.selectionName || '';
             const isWinner =
-              userSelection === winningSelectionName ||
-              (winningSelectionName &&
-                userSelection &&
-                userSelection.toLowerCase().includes(winningSelectionName.toLowerCase()));
+              userSelectionName.toLowerCase() === winningSelectionName.toLowerCase() ||
+              userSelectionName.toLowerCase().includes(winningSelectionName.toLowerCase()) ||
+              winningSelectionName.toLowerCase().includes(userSelectionName.toLowerCase());
 
             const betStatus = isWinner ? 'WON' : 'LOST';
             await this.settleTestBet(
               bet.id,
               betStatus,
-              `Auto-settled: Result was "${winningSelectionName}" for market "${m.name}"`
+              `Auto-settled: Winning outcome was "${winningSelectionName}" for market "${m.name}"`
             );
             settledCount++;
+          }
+
+          if (this.sportsGateway && !suppressBroadcast) {
+            this.sportsGateway.broadcastMarketSettled(match.id, {
+              marketId: m.id,
+              winningSelectionName,
+              matchId: match.id,
+            });
           }
 
           settledMarkets.push({
@@ -1463,6 +1818,140 @@ export class CricketMarketsService implements OnModuleInit {
       lockedCount,
       settledMarkets,
     };
+  }
+
+  /**
+   * Rolling Session Engine: Continuous creation of Session Lines and Next Over Markets
+   * E.g.: 6 Overs -> 10 Overs -> 15 Overs -> 20 Overs continuous rolling session lines!
+   * Uses Professional Bookie Wicket-Decay & Pace Adjustment Formula for High/Low Scoring Matches.
+   */
+  async ensureRollingSessionMarkets(matchId: string, state: any, suppressBroadcast: boolean = false) {
+    const match = await this.db.match.findUnique({
+      where: { id: matchId },
+      include: { teamA: true, teamB: true },
+    });
+
+    if (!match) return;
+
+    const inningsNumber = state.inningsNumber || 1;
+    const battingTeam = inningsNumber === 1 ? match.teamA : match.teamB;
+    const battingTeamName = battingTeam?.name || (inningsNumber === 1 ? 'Team A' : 'Team B');
+    const runs = state.runs || 0;
+    const overs = state.overs || 0;
+    const wickets = state.wickets || 0;
+    const crr = state.currentRunRate || (overs > 0 ? runs / overs : 6.0);
+    const safeCrr = Math.max(3.5, Math.min(16.0, crr || 6.0));
+
+    // Professional Bookie Wicket Decay Factor (lower order bats slower after losing wickets)
+    const wicketDecay = Math.max(0.3, 1.0 - wickets * 0.07);
+
+    // 1. Session Lines (6, 10, 15, 20 overs)
+    const sessionMilestones = [6, 10, 15, 20];
+    for (const milestone of sessionMilestones) {
+      if (overs >= milestone || wickets >= 10) continue; // Past milestone or All Out
+
+      // Check if an OPEN or SUSPENDED session market already exists for this milestone
+      const existing = await this.db.cricketMarket.findFirst({
+        where: {
+          matchId: match.id,
+          name: { contains: `${milestone} Overs Session Line` },
+          status: { in: ['OPEN', 'SUSPENDED'] },
+        },
+      });
+
+      if (!existing) {
+        // Calculate dynamic bookie line threshold L based on current score, CRR & wicket decay
+        const oversRemaining = milestone - overs;
+        const projectedRunsFromRemaining = safeCrr * oversRemaining * wicketDecay;
+        const projectedTarget = Math.round(runs + projectedRunsFromRemaining);
+        const lineThreshold = projectedTarget + 0.5;
+
+        const newMarket = await this.db.cricketMarket.create({
+          data: {
+            matchId: match.id,
+            categorySlug: 'session',
+            name: `${milestone} Overs Session Line (${battingTeamName})`,
+            marketType: 'SESSION_FANCY',
+            lineThreshold,
+            status: 'OPEN',
+            sourceType: 'STATISTICAL_MODEL',
+            sortOrder: 10 + milestone,
+            selections: {
+              create: [
+                { name: `Over ${lineThreshold} Runs`, backPrice: 1.85, layPrice: 1.90, sortOrder: 1 },
+                { name: `Under ${lineThreshold} Runs`, backPrice: 1.85, layPrice: 1.90, sortOrder: 2 },
+              ],
+            },
+          },
+          include: { selections: true },
+        });
+
+        this.logger.log(`Created rolling session market: ${newMarket.name} (Line: ${lineThreshold})`);
+
+        if (this.sportsGateway && !suppressBroadcast) {
+          this.sportsGateway.broadcastMarketUpdated(match.id, {
+            marketId: newMarket.id,
+            matchId: match.id,
+            name: newMarket.name,
+            status: 'OPEN',
+          });
+        }
+        break; // Only create the immediate next session milestone
+      }
+    }
+
+    // 2. Next Over Runs Market (e.g. 1st Over, 2nd Over, 3rd Over... 20th Over)
+    const currentCompletedOvers = Math.floor(overs);
+    const nextOverNumber = currentCompletedOvers + 1;
+
+    if (nextOverNumber <= 20 && wickets < 10) {
+      const existingOverMarket = await this.db.cricketMarket.findFirst({
+        where: {
+          matchId: match.id,
+          name: { contains: `${nextOverNumber}` },
+          categorySlug: 'overs',
+          status: { in: ['OPEN', 'SUSPENDED'] },
+        },
+      });
+
+      if (!existingOverMarket) {
+        const lineThreshold = Math.round(safeCrr * wicketDecay) + 0.5;
+        const suffix = nextOverNumber === 1 ? 'st' : nextOverNumber === 2 ? 'nd' : nextOverNumber === 3 ? 'rd' : 'th';
+        
+        const newOverMarket = await this.db.cricketMarket.create({
+          data: {
+            matchId: match.id,
+            categorySlug: 'overs',
+            name: `${nextOverNumber}${suffix} Over Total Runs`,
+            marketType: 'OVER_RUNS',
+            lineThreshold,
+            status: 'OPEN',
+            sourceType: 'STATISTICAL_MODEL',
+            sortOrder: 5,
+            selections: {
+              create: [
+                { name: `Over ${lineThreshold} Runs`, backPrice: 1.90, layPrice: 1.95, sortOrder: 1 },
+                { name: `Under ${lineThreshold} Runs`, backPrice: 1.90, layPrice: 1.95, sortOrder: 2 },
+              ],
+            },
+          },
+          include: { selections: true },
+        });
+
+        this.logger.log(`Created rolling over market: ${newOverMarket.name} (Line: ${lineThreshold})`);
+
+        if (this.sportsGateway && !suppressBroadcast) {
+          this.sportsGateway.broadcastMarketUpdated(match.id, {
+            marketId: newOverMarket.id,
+            matchId: match.id,
+            name: newOverMarket.name,
+            status: 'OPEN',
+          });
+        }
+      }
+    }
+
+    this.clearCache();
   }
 }
 

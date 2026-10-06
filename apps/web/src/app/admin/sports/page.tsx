@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { getApiBaseUrl } from '@/lib/config';
 import { useSportsSocket } from '@/hooks/useSportsSocket';
+import { CricketPricingAdminSection } from '@/components/sports/CricketPricingAdminSection';
 import {
   Trophy,
   RefreshCw,
@@ -353,10 +354,11 @@ function SportsAdminContent() {
     | 'categories'
     | 'competitions'
     | 'provider'
-    | 'bet_settings';
+    | 'bet_settings'
+    | 'pricing_engine';
 
   const validTabs = useMemo<TabType[]>(
-    () => ['matches', 'bets', 'markets', 'categories', 'competitions', 'provider', 'bet_settings'],
+    () => ['matches', 'bets', 'markets', 'categories', 'competitions', 'provider', 'bet_settings', 'pricing_engine'],
     []
   );
 
@@ -1475,6 +1477,16 @@ function SportsAdminContent() {
                 }`}
             >
               <Activity className="w-3.5 h-3.5" /> Provider Engine Config
+            </button>
+
+            <button
+              onClick={() => setActiveTab('pricing_engine')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${activeTab === 'pricing_engine'
+                  ? 'bg-indigo-600 text-white shadow-sm font-extrabold'
+                  : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+                }`}
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" /> Pricing &amp; Risk Engine
             </button>
           </div>
 
@@ -2757,6 +2769,13 @@ function SportsAdminContent() {
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* 8. PRICING & RISK ENGINE SECTION */}
+          {(activeTab === 'pricing_engine' || activeTab === 'markets' || activeTab === 'bet_settings') && (
+            <div className="pt-4">
+              <CricketPricingAdminSection matchList={matches} />
             </div>
           )}
         </main>

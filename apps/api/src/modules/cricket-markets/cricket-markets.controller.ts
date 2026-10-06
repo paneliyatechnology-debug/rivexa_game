@@ -27,6 +27,30 @@ export class CricketMarketsController {
     };
   }
 
+  @Get('matches/:matchId/markets/active')
+  async getActiveMatchMarkets(
+    @Param('matchId') matchId: string,
+    @Query('category') category?: string
+  ) {
+    const result = await this.marketsService.getActiveMatchMarkets(matchId, category || 'all');
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  @Get('matches/:matchId/markets/history')
+  async getMatchMarketsHistory(
+    @Param('matchId') matchId: string,
+    @Query('category') category?: string
+  ) {
+    const result = await this.marketsService.getMatchMarketsHistory(matchId, category || 'all');
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
   @Post('test-bets')
   async placeTestBet(@Body() body: any) {
     const result = await this.marketsService.placeTestBet(body);
@@ -176,6 +200,7 @@ export class CricketMarketsController {
       data,
     };
   }
+
 
   @Patch('admin/matches/:matchId/odds')
   async updateMatchOddsConfig(

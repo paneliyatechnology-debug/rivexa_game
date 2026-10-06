@@ -87,6 +87,21 @@ export function BetSlip({
 
   useEffect(() => { fetchPlacedBets(); }, [fetchPlacedBets]);
 
+  useEffect(() => {
+    const handleBetPlaced = () => {
+      fetchPlacedBets();
+      setActivePanelTab('my_bets');
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('betPlaced', handleBetPlaced);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('betPlaced', handleBetPlaced);
+      }
+    };
+  }, [fetchPlacedBets]);
+
   const handlePlaceBet = async () => {
     if (items.length === 0) return;
     if (totalStake <= 0) { setMessage({ type: 'error', text: 'Please enter a valid stake amount.' }); return; }
@@ -107,18 +122,34 @@ export function BetSlip({
       if (json.success) {
         setMessage({ type: 'success', text: `Bet Placed! Ref: ${json.betReference || json.data?.betReference}` });
         onClearAll(); await refreshBalance(); await fetchPlacedBets();
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('betPlaced', {
+              detail: { matchId: items[0].matchId, betReference: json.betReference },
+            })
+          );
+        }
         setTimeout(() => { setActivePanelTab('my_bets'); setMessage(null); }, 1200);
       } else {
         setMessage({ type: 'error', text: json.message || 'Failed to place bet.' });
+        if (json.code === 'MARKET_CLOSED' || json.code === 'MATCH_COMPLETED' || json.code === 'MARKET_EXPIRED' || (json.message && json.message.toLowerCase().includes('closed'))) {
+          // Remove closed selection from slip automatically
+          onClearAll();
+        }
       }
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message || 'Network error placing bet.' });
     } finally { setIsSubmitting(false); }
   };
 
-  const filteredPlacedBets = placedBets.filter((bet) =>
-    betScopeFilter === 'this_match' && currentMatchId ? bet.matchId === currentMatchId : true
-  );
+  const filteredPlacedBets = placedBets.filter((bet) => {
+    if (betScopeFilter !== 'this_match' || !currentMatchId) return true;
+    return (
+      bet.matchId === currentMatchId ||
+      bet.providerMatchId === currentMatchId ||
+      bet.match?.id === currentMatchId
+    );
+  });
 
   // Scroll stake input into view after keyboard opens
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {

@@ -18,6 +18,7 @@ export class CricApiProvider implements ICricketDataProvider {
 
   private customApiKey?: string;
   private customBaseUrl?: string;
+  public lastError: string | null = null;
 
   public setApiKey(key: string) {
     if (key) this.customApiKey = key;
@@ -47,12 +48,16 @@ export class CricApiProvider implements ICricketDataProvider {
     return parseInt(process.env.CRICAPI_TIMEOUT_MS || '10000', 10);
   }
 
-  async getProviderAccountInfo(): Promise<{ connected: boolean; hitsUsed?: number; hitsLimit?: number }> {
+  async getProviderAccountInfo(): Promise<{ connected: boolean; error?: string; hitsUsed?: number; hitsLimit?: number }> {
     try {
-      const matches = await this.getCurrentMatches();
+      this.lastError = null;
+      const res = await this.fetchFromApi<{ data?: any[] }>('cricScore');
+      if (res === null || this.lastError) {
+        return { connected: false, error: this.lastError || 'Invalid response from CricAPI' };
+      }
       return { connected: true };
-    } catch (e) {
-      return { connected: false };
+    } catch (e: any) {
+      return { connected: false, error: e.message || 'Connection error' };
     }
   }
 
@@ -119,7 +124,7 @@ export class CricApiProvider implements ICricketDataProvider {
 
   private async fetchFromApi<T>(endpointPath: string, params: Record<string, string> = {}): Promise<T | null> {
     if (!this.apiKey) {
-      // Never fall back to a credential embedded in source code.
+      this.lastError = 'CRICAPI_API_KEY is not configured';
       this.logger.error('CricAPI request skipped: CRICAPI_API_KEY is not configured');
       return null;
     }
@@ -144,6 +149,7 @@ export class CricApiProvider implements ICricketDataProvider {
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        this.lastError = `HTTP error ${response.status} ${response.statusText}`;
         this.logger.error(
           `CricAPI HTTP error ${response.status} ${response.statusText} for endpoint ${endpointPath}`
         );
@@ -152,16 +158,21 @@ export class CricApiProvider implements ICricketDataProvider {
 
       const json = await response.json();
       if (json.status === 'failure') {
-        this.logger.warn(`CricAPI returned status=failure for ${endpointPath}: ${json.reason || json.message || 'Unknown reason'}`);
+        const reason = json.reason || json.message || 'Unknown reason';
+        this.lastError = reason;
+        this.logger.warn(`CricAPI returned status=failure for ${endpointPath}: ${reason}`);
         return null;
       }
 
+      this.lastError = null;
       return json as T;
     } catch (error: any) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
+        this.lastError = `Request timeout after ${this.timeoutMs}ms`;
         this.logger.error(`CricAPI request timeout after ${this.timeoutMs}ms for ${endpointPath}`);
       } else {
+        this.lastError = error.message || String(error);
         this.logger.error(`CricAPI request error for ${endpointPath}: ${error.message || error}`);
       }
       return null;

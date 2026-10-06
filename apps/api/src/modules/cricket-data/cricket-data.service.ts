@@ -18,6 +18,8 @@ import { SportsGateway } from '../../sports/sports.gateway.js';
 
 import { SportsService } from '../../sports/sports.service.js';
 import { CricketMarketsService } from '../cricket-markets/cricket-markets.service.js';
+import { MatchStateService } from '../cricket-markets/match-state.service.js';
+import { PricingEngineService } from '../cricket-markets/pricing/pricing-engine.service.js';
 
 interface CacheItem<T> {
   data: T;
@@ -59,7 +61,11 @@ export class CricketDataService implements OnModuleInit, OnModuleDestroy {
     @Inject(forwardRef(() => SportsService))
     private readonly sportsService: SportsService,
     @Optional() @Inject(forwardRef(() => CricketMarketsService))
-    private readonly cricketMarketsService?: CricketMarketsService
+    private readonly cricketMarketsService?: CricketMarketsService,
+    @Optional() @Inject(forwardRef(() => MatchStateService))
+    private readonly matchStateService?: MatchStateService,
+    @Optional() @Inject(forwardRef(() => PricingEngineService))
+    private readonly pricingEngineService?: PricingEngineService
   ) {
     this.providers.set(cricApiProvider.providerName, cricApiProvider);
     this.providers.set(genericRestProvider.providerName, genericRestProvider);
@@ -336,19 +342,33 @@ export class CricketDataService implements OnModuleInit, OnModuleDestroy {
       const providerObj = this.providers.get(providerName) || this.cricApiProvider;
       const capabilities = providerObj.getCapabilities();
 
-      if (!existing) {
-        return await this.db.cricketProvider.create({
-          data: {
-            name: providerName,
-            displayName: providerName === 'cricapi' ? 'CricAPI Test Provider' : providerName,
-            baseUrl: process.env.CRICAPI_BASE_URL || 'https://api.cricapi.com/v1',
-            isActive: true,
-            isTestMode: true,
-            capabilities: capabilities as any,
-          },
-        });
+      if (existing) {
+        const caps = (existing.capabilities as any) || {};
+        if (caps.apiKey) {
+          process.env.CRICAPI_API_KEY = caps.apiKey;
+          this.cricApiProvider.setApiKey(caps.apiKey);
+          this.genericRestProvider.setApiKey(caps.apiKey);
+        }
+        if (existing.baseUrl) {
+          process.env.CRICAPI_BASE_URL = existing.baseUrl;
+          this.cricApiProvider.setBaseUrl(existing.baseUrl);
+          this.genericRestProvider.setBaseUrl(existing.baseUrl);
+        }
+        return existing;
       }
-      return existing;
+
+      return await this.db.cricketProvider.create({
+        data: {
+          name: providerName,
+          displayName: (providerObj as any).providerDisplayName || providerName,
+          baseUrl: process.env.CRICAPI_BASE_URL || 'https://api.cricapi.com/v1',
+          isActive: true,
+          capabilities: {
+            ...capabilities,
+            apiKey: process.env.CRICAPI_API_KEY || '',
+          },
+        },
+      });
     } catch (err) {
       this.logger.error(`Error ensuring provider registered for ${providerName}`, err);
       return null;
@@ -817,12 +837,30 @@ export class CricketDataService implements OnModuleInit, OnModuleDestroy {
               receivedAt: new Date().toISOString(),
             });
 
-            // Auto-settle & auto-lock session markets for live match score updates
-            if (this.cricketMarketsService) {
+            // Trigger authoritative MatchState normalization and full market pricing recalculation
+            if (this.matchStateService && internalMatchId) {
               try {
-                await this.cricketMarketsService.autoSettleMatchMarkets(internalMatchId);
-              } catch (settleErr: any) {
-                this.logger.error(`Auto settle failed for match ${internalMatchId}: ${settleErr.message}`);
+                const { state } = await this.matchStateService.processAndNormalizeMatchState({
+                  matchId: internalMatchId,
+                  teamAScore: scoreA,
+                  teamBScore: scoreB,
+                  teamAOvers: oversA,
+                  teamBOvers: oversB,
+                  statusText: pMatch.status,
+                  providerEventId: pMatch.id,
+                });
+
+                if (state) {
+                  if (this.cricketMarketsService) {
+                    await this.cricketMarketsService.autoSettleMatchMarkets(internalMatchId);
+                    await this.cricketMarketsService.ensureRollingSessionMarkets(internalMatchId, state);
+                  }
+                  if (this.pricingEngineService) {
+                    await this.pricingEngineService.recalculateMatchMarkets(internalMatchId, state);
+                  }
+                }
+              } catch (pricingErr: any) {
+                this.logger.error(`Live pricing recalculation failed for match ${internalMatchId}: ${pricingErr.message}`);
               }
             }
           }
@@ -1159,11 +1197,16 @@ export class CricketDataService implements OnModuleInit, OnModuleDestroy {
     try {
       const accountInfo = await this.activeProvider.getProviderAccountInfo();
       const latencyMs = Date.now() - start;
-      await this.logSyncEvent('testConnection', 'SUCCESS', latencyMs, 1);
+      const isConnected = accountInfo.connected;
+      const statusText = isConnected
+        ? '200 OK — Connected & Verified'
+        : `Connection Failed: ${(accountInfo as any).error || 'API Key Invalid or Expired'}`;
+
+      await this.logSyncEvent('testConnection', isConnected ? 'SUCCESS' : 'FAILED', latencyMs, isConnected ? 1 : 0, isConnected ? null : statusText);
       return {
-        success: accountInfo.connected,
+        success: isConnected,
         latencyMs,
-        statusText: accountInfo.connected ? '200 OK — Connected & Verified' : 'Connection Failed',
+        statusText,
         provider: this.activeProviderName,
       };
     } catch (err: any) {

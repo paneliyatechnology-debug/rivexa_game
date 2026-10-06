@@ -88,6 +88,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get tenantPlayer(): any { return (this.client as any).tenantPlayer; }
   get tenantCreditLog(): any { return (this.client as any).tenantCreditLog; }
   get tenantAuditLog(): any { return (this.client as any).tenantAuditLog; }
+  // ── Cricket Market Engine models ──────────────────────────────────────────
+  get cricketMatchStateSnapshot(): any { return (this.client as any).cricketMatchStateSnapshot; }
+  get marketPriceSnapshot(): any { return (this.client as any).marketPriceSnapshot; }
+  get marketExposureSnapshot(): any { return (this.client as any).marketExposureSnapshot; }
+  get marketEvent(): any { return (this.client as any).marketEvent; }
+  get marketOverride(): any { return (this.client as any).marketOverride; }
+  get marketConfiguration(): any { return (this.client as any).marketConfiguration; }
+  get marketAuditLog(): any { return (this.client as any).marketAuditLog; }
   get $transaction(): any { return this.client.$transaction.bind(this.client); }
   get $queryRaw(): any { return this.client.$queryRaw.bind(this.client); }
 }

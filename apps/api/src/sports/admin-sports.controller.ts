@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Put, Patch, Delete, Body, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Put, Patch, Delete, Body, Param, NotFoundException, Inject, forwardRef, Optional } from '@nestjs/common';
 import { SportsService } from './sports.service.js';
 import { SportsProviderService } from './sports-provider.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import { SportsGateway } from './sports.gateway.js';
 import { CricketMarketsService } from '../modules/cricket-markets/cricket-markets.service.js';
+import { MatchStateService } from '../modules/cricket-markets/match-state.service.js';
+import { PricingEngineService } from '../modules/cricket-markets/pricing/pricing-engine.service.js';
 
 @Controller('admin/sports')
 export class AdminSportsController {
@@ -12,7 +14,11 @@ export class AdminSportsController {
     private readonly sportsProviderService: SportsProviderService,
     private readonly db: DatabaseService,
     private readonly sportsGateway: SportsGateway,
-    private readonly cricketMarketsService: CricketMarketsService
+    private readonly cricketMarketsService: CricketMarketsService,
+    @Optional() @Inject(forwardRef(() => MatchStateService))
+    private readonly matchStateService?: MatchStateService,
+    @Optional() @Inject(forwardRef(() => PricingEngineService))
+    private readonly pricingEngineService?: PricingEngineService
   ) {}
 
   @Get('provider/auto-sync')
@@ -254,12 +260,14 @@ export class AdminSportsController {
       },
     });
 
-    // 6. Generate Odds / Markets for Match
+        // Generate Odds / Markets for Match
     try {
       await this.cricketMarketsService.generateMarketsForMatch(match);
     } catch (e) {
       // ignore market generation errors if non-critical
     }
+
+    this.sportsService.clearCache();
 
     // 7. If LIVE, emit websocket event
     if (matchStatus === 'LIVE') {
@@ -333,6 +341,8 @@ export class AdminSportsController {
       },
     });
 
+    this.sportsService.clearCache();
+
     return { success: true, statusCode: 200, data: updated };
   }
 
@@ -350,6 +360,8 @@ export class AdminSportsController {
       },
       include: { score: true, teamA: true, teamB: true },
     });
+
+    this.sportsService.clearCache();
 
     if (statusUpper === 'LIVE' && match.score) {
       this.sportsGateway.broadcastScoreUpdate(id, match.score);
@@ -425,8 +437,39 @@ export class AdminSportsController {
       },
     });
 
+    // Invalidate cached match state immediately
+    this.sportsService.clearCache();
+
     // Broadcast live score updates to all clients connected via Socket.IO
     this.sportsGateway.broadcastScoreUpdate(id, updatedScore);
+
+    // Trigger authoritative MatchState normalization and live odds recalculation
+    if (this.matchStateService) {
+      try {
+        const { state } = await this.matchStateService.processAndNormalizeMatchState({
+          matchId: id,
+          teamAScore: updatedScore.teamAScore,
+          teamBScore: updatedScore.teamBScore,
+          teamAOvers: updatedScore.teamAOvers,
+          teamBOvers: updatedScore.teamBOvers,
+          currentInnings: updatedScore.currentInnings,
+          statusText: updatedScore.statusText,
+          targetRuns: updatedScore.targetRuns || undefined,
+        });
+
+        if (state) {
+          if (this.cricketMarketsService) {
+            await this.cricketMarketsService.autoSettleMatchMarkets(id, updatedScore);
+            await this.cricketMarketsService.ensureRollingSessionMarkets(id, state);
+          }
+          if (this.pricingEngineService) {
+            await this.pricingEngineService.recalculateMatchMarkets(id, state);
+          }
+        }
+      } catch (err: any) {
+        console.error(`Admin score update pricing & settlement error for match ${id}: ${err.message}`);
+      }
+    }
 
     return {
       success: true,
@@ -473,6 +516,7 @@ export class AdminSportsController {
       });
     }
 
+    this.sportsService.clearCache();
     this.sportsGateway.broadcastMatchCompleted(id, updated);
 
     return {
@@ -486,6 +530,7 @@ export class AdminSportsController {
   @Delete('matches/:id')
   async deleteMatch(@Param('id') id: string) {
     await this.db.match.delete({ where: { id } });
+    this.sportsService.clearCache();
     return { success: true, statusCode: 200, message: 'Match deleted successfully' };
   }
 

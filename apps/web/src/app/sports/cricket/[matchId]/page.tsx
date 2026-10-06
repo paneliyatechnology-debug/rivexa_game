@@ -19,6 +19,8 @@ import { getApiBaseUrl } from '@/lib/config';
 import { IMatch } from '@gaming-platform/types';
 import { RefreshCw, AlertCircle, History, Sparkles } from 'lucide-react';
 
+import { getActiveMarkets } from '@/utils/marketLifecycleSelector';
+
 export default function CricketMatchDetailPage({
   params,
 }: {
@@ -44,7 +46,65 @@ export default function CricketMatchDetailPage({
   const [showHistory, setShowHistory] = useState<boolean>(false);
 
   // WebSocket for Real-Time Match Events
-  const { isConnected, liveUpdate, ballEvent, connectionVersion } = useSportsSocket(matchId);
+  const {
+    isConnected,
+    liveUpdate,
+    ballEvent,
+    oddsUpdate,
+    matchCompletedEvent,
+    marketClosedEvent,
+    marketSettledEvent,
+    marketUpdatedEvent,
+    matchMarketsClosedEvent,
+    connectionVersion,
+  } = useSportsSocket(matchId);
+
+  // Handle market closed / settled realtime events
+  useEffect(() => {
+    const closedEvent = marketClosedEvent || marketSettledEvent;
+    if (closedEvent && closedEvent.marketId) {
+      const targetMarketId = closedEvent.marketId;
+      setMarkets((prev) => prev.filter((m) => m.id !== targetMarketId));
+      setBetSlipItems((prev) => prev.filter((it) => it.marketId !== targetMarketId));
+    }
+  }, [marketClosedEvent, marketSettledEvent]);
+
+  // Handle match completed / all markets closed realtime events
+  useEffect(() => {
+    const completedEvt = matchCompletedEvent || matchMarketsClosedEvent;
+    if (completedEvt) {
+      setMarkets([]);
+      setBetSlipItems([]);
+    }
+  }, [matchCompletedEvent, matchMarketsClosedEvent]);
+
+  // Update market odds dynamically on Socket.IO oddsUpdate event
+  useEffect(() => {
+    if (oddsUpdate && oddsUpdate.marketId && oddsUpdate.selectionId) {
+      const targetOdds = oddsUpdate.newOdds || oddsUpdate.finalOdds;
+      if (!targetOdds) return;
+      setMarkets((prevMarkets) => {
+        const targetMarket = prevMarkets.find((m) => m.id === oddsUpdate.marketId);
+        if (targetMarket && (targetMarket.status === 'CLOSED' || targetMarket.status === 'SETTLED')) {
+          // Stale Odds Protection: DO NOT reopen closed/settled markets
+          return prevMarkets;
+        }
+        return prevMarkets.map((m) => {
+          if (m.id !== oddsUpdate.marketId) return m;
+          return {
+            ...m,
+            selections: m.selections.map((sel) => {
+              if (sel.id !== oddsUpdate.selectionId) return sel;
+              return {
+                ...sel,
+                backPrice: targetOdds,
+              };
+            }),
+          };
+        });
+      });
+    }
+  }, [oddsUpdate]);
 
   // Fetch full match detail from NestJS API
   const fetchMatchDetail = useCallback(async () => {
@@ -64,12 +124,12 @@ export default function CricketMatchDetailPage({
     }
   }, [matchId]);
 
-  // Fetch markets & categories for current match
-  const fetchMarkets = useCallback(async (catSlug: string) => {
-    setIsLoadingMarkets(true);
+  // Fetch active markets & categories for current match
+  const fetchMarkets = useCallback(async (catSlug: string, showSpinner = true) => {
+    if (showSpinner) setIsLoadingMarkets(true);
     setMarketsError(null);
     try {
-      const res = await fetch(`${getApiBaseUrl()}/cricket/matches/${matchId}/markets?category=${catSlug}`);
+      const res = await fetch(`${getApiBaseUrl()}/cricket/matches/${matchId}/markets/active?category=${catSlug}`);
       if (!res.ok) throw new Error('Failed loading markets');
       const json = await res.json();
       if (json.data) {
@@ -78,9 +138,22 @@ export default function CricketMatchDetailPage({
     } catch (err: any) {
       setMarketsError(err.message || 'Failed loading markets data');
     } finally {
-      setIsLoadingMarkets(false);
+      if (showSpinner) setIsLoadingMarkets(false);
     }
   }, [matchId]);
+
+  // Handle market updated / newly created rolling markets realtime events with deduplication
+  const lastHandledMarketUpdateRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    if (marketUpdatedEvent && activeTab === 'markets') {
+      const eventKey = `${marketUpdatedEvent.marketId || ''}:${marketUpdatedEvent.timestamp || ''}`;
+      if (lastHandledMarketUpdateRef.current !== eventKey) {
+        lastHandledMarketUpdateRef.current = eventKey;
+        void fetchMarkets(activeCategorySlug, false);
+      }
+    }
+  }, [marketUpdatedEvent, activeTab, activeCategorySlug, fetchMarkets]);
 
   // Fetch categories once
   const fetchCategories = useCallback(async () => {
@@ -110,18 +183,31 @@ export default function CricketMatchDetailPage({
 
   useEffect(() => {
     if (activeTab === 'markets') {
-      fetchMarkets(activeCategorySlug);
+      fetchMarkets(activeCategorySlug, true);
     }
   }, [activeTab, activeCategorySlug, fetchMarkets]);
 
   // Handle selection toggling on Market Cards
-  const handleSelectOdds = (selection: IMarketSelection, market: ICricketMarketData) => {
+  const handleSelectOdds = (
+    selection: IMarketSelection,
+    market: ICricketMarketData,
+    customStake?: number
+  ) => {
     const existingIndex = betSlipItems.findIndex((it) => it.selectionId === selection.id);
+    const initialStake = customStake && customStake > 0 ? customStake : 100;
+
     if (existingIndex >= 0) {
-      // Toggle off
-      setBetSlipItems((prev) => prev.filter((it) => it.selectionId !== selection.id));
+      if (customStake !== undefined && customStake > 0) {
+        // Update stake for selection already in slip if customStake passed
+        setBetSlipItems((prev) =>
+          prev.map((it) => (it.selectionId === selection.id ? { ...it, stake: initialStake } : it))
+        );
+      } else {
+        // Toggle off
+        setBetSlipItems((prev) => prev.filter((it) => it.selectionId !== selection.id));
+      }
     } else {
-      // Add selection
+      // Add selection with custom stake or default 100
       const matchName = match ? `${match.teamA?.name} vs ${match.teamB?.name}` : 'Cricket Match';
       const newItem: IBetSlipItem = {
         matchId,
@@ -131,7 +217,7 @@ export default function CricketMatchDetailPage({
         selectionId: selection.id,
         selectionName: selection.name,
         odds: Number(selection.backPrice),
-        stake: 100,
+        stake: initialStake,
       };
       // Replace single selection per market or append
       setBetSlipItems((prev) => [...prev.filter((it) => it.marketId !== market.id), newItem]);
@@ -152,24 +238,63 @@ export default function CricketMatchDetailPage({
     );
   };
 
-  // Handle WebSocket score updates in real-time without reloading
+  // Handle WebSocket score updates in real-time with instant local state mutation
   useEffect(() => {
     if (!liveUpdate) return;
     const targetMatchId = liveUpdate.matchId || liveUpdate.score?.matchId;
     if (targetMatchId && targetMatchId !== matchId) return;
 
-    // Socket payload is only a notification. Re-read canonical state from our API/DB.
-    void fetchMatchDetail();
-    if (activeTab === 'markets') {
-      void fetchMarkets(activeCategorySlug);
+    const incomingScore = liveUpdate.score || (liveUpdate.teamAScore ? liveUpdate : null);
+    if (incomingScore) {
+      setMatch((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          score: {
+            ...prev.score,
+            ...incomingScore,
+            teamAScore: incomingScore.teamAScore ?? prev.score?.teamAScore,
+            teamBScore: incomingScore.teamBScore ?? prev.score?.teamBScore,
+            teamAOvers: incomingScore.teamAOvers ?? prev.score?.teamAOvers,
+            teamBOvers: incomingScore.teamBOvers ?? prev.score?.teamBOvers,
+            statusText: incomingScore.statusText ?? prev.score?.statusText,
+            recentOvers: incomingScore.recentOvers ?? prev.score?.recentOvers,
+            activeBatsman: incomingScore.activeBatsman ?? prev.score?.activeBatsman,
+            activeBowler: incomingScore.activeBowler ?? prev.score?.activeBowler,
+          },
+          status: incomingScore.status ? incomingScore.status.toUpperCase() : prev.status,
+          resultSummary: incomingScore.resultSummary ?? prev.resultSummary,
+        };
+      });
     }
-  }, [liveUpdate, matchId, fetchMatchDetail, activeTab, activeCategorySlug, fetchMarkets]);
+  }, [liveUpdate, matchId]);
 
-  // Commentary events follow the same DB-first refresh path.
+  // Commentary & ball events follow the same real-time update path
   useEffect(() => {
-    if (!ballEvent || ballEvent.matchId !== matchId) return;
-    void fetchMatchDetail();
-  }, [ballEvent, matchId, fetchMatchDetail]);
+    if (!ballEvent) return;
+    const targetMatchId = ballEvent.matchId || ballEvent.ball?.matchId;
+    if (targetMatchId && targetMatchId !== matchId) return;
+
+    const incomingScore = ballEvent.score || ballEvent.ball?.score || (ballEvent.teamAScore ? ballEvent : null);
+    if (incomingScore) {
+      setMatch((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          score: {
+            ...prev.score,
+            ...incomingScore,
+            teamAScore: incomingScore.teamAScore ?? prev.score?.teamAScore,
+            teamBScore: incomingScore.teamBScore ?? prev.score?.teamBScore,
+            teamAOvers: incomingScore.teamAOvers ?? prev.score?.teamAOvers,
+            teamBOvers: incomingScore.teamBOvers ?? prev.score?.teamBOvers,
+            statusText: incomingScore.statusText ?? prev.score?.statusText,
+            recentOvers: incomingScore.recentOvers ?? prev.score?.recentOvers,
+          },
+        };
+      });
+    }
+  }, [ballEvent, matchId]);
 
   return (
     <div className="w-full h-screen bg-gradient-to-b from-[#0F1C45] via-[#0A1433] to-[#070E24] text-[#F5F7FF] flex flex-col font-sans pt-[78px] sm:pt-[84px] overflow-hidden">
@@ -291,13 +416,14 @@ export default function CricketMatchDetailPage({
                     {!isLoadingMarkets && !marketsError && (
                       <div className="space-y-4">
                         {(() => {
-                          const visibleMarkets = markets.filter(
-                            (m) => m.status !== 'CLOSED' && m.status !== 'SETTLED'
-                          );
+                          const visibleMarkets = getActiveMarkets(markets);
                           if (visibleMarkets.length === 0) {
+                            const isMatchEnded = (match?.status as string) === 'COMPLETED' || (match?.status as string) === 'FINISHED';
                             return (
                               <div className="py-12 bg-[#132657] border border-white/10 rounded-2xl text-center text-xs text-slate-300">
-                                No active betting markets available in this category currently.
+                                {isMatchEnded
+                                  ? 'Match completed — betting markets are closed.'
+                                  : 'No active betting markets available in this category currently.'}
                               </div>
                             );
                           }

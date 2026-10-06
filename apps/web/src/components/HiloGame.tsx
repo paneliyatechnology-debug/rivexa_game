@@ -256,7 +256,7 @@ export default function HiloGame() {
       if (!ctx) return;
       if (ctx.state === 'suspended') ctx.resume();
 
-      const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+      const notes = [523.25, 659.25, 783.99, 1046.5];
       notes.forEach((freq, idx) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
@@ -888,10 +888,10 @@ export default function HiloGame() {
     return (
       <div
         className={`relative w-full max-w-[185px] sm:max-w-[200px] aspect-[2/3] rounded-2xl p-2 min-[360px]:p-2.5 sm:p-3.5 flex flex-col justify-between select-none shadow-[0_12px_35px_rgba(0,0,0,0.45)] transition-all duration-300 bg-white border border-slate-200 overflow-hidden ${isCurrent
-            ? 'ring-2 ring-[#00D9FF]/50 shadow-[0_0_30px_rgba(40,123,255,0.4)]'
-            : lastPlayResult?.result === 'WIN'
-              ? 'ring-2 ring-[#00E5A0] shadow-[0_0_25px_rgba(0,229,160,0.45)]'
-              : 'ring-2 ring-[#FF416C] shadow-[0_0_25px_rgba(255,65,108,0.45)]'
+          ? 'ring-2 ring-[#00D9FF]/50 shadow-[0_0_30px_rgba(40,123,255,0.4)]'
+          : lastPlayResult?.result === 'WIN'
+            ? 'ring-2 ring-[#00E5A0] shadow-[0_0_25px_rgba(0,229,160,0.45)]'
+            : 'ring-2 ring-[#FF416C] shadow-[0_0_25px_rgba(255,65,108,0.45)]'
           }`}
       >
         {/* Subtle Card Glare Effect */}
@@ -991,10 +991,10 @@ export default function HiloGame() {
                 <div>
                   <span
                     className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1 ${isWin
-                        ? 'bg-emerald-500/20 text-[#00E5A0] border border-emerald-500/35'
-                        : item.status === 'ACTIVE'
-                          ? 'bg-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/35'
-                          : 'bg-rose-500/20 text-rose-400 border border-rose-500/35'
+                      ? 'bg-emerald-500/20 text-[#00E5A0] border border-emerald-500/35'
+                      : item.status === 'ACTIVE'
+                        ? 'bg-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/35'
+                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/35'
                       }`}
                   >
                     <span>{isWin ? 'WIN ✅' : item.status === 'ACTIVE' ? 'ACTIVE ⚡' : 'LOSS ❌'}</span>
@@ -1106,10 +1106,10 @@ export default function HiloGame() {
                         <span className="font-mono font-bold text-white">{play.nextCard.code}</span>
                         <span
                           className={`inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-black ${play.choice === 'UP'
-                              ? 'text-[#00D9FF] bg-[#00D9FF]/10'
-                              : play.choice === 'SAME'
-                                ? 'text-[#FFC928] bg-[#FFC928]/10'
-                                : 'text-[#FF3FA4] bg-[#FF3FA4]/10'
+                            ? 'text-[#00D9FF] bg-[#00D9FF]/10'
+                            : play.choice === 'SAME'
+                              ? 'text-[#FFC928] bg-[#FFC928]/10'
+                              : 'text-[#FF3FA4] bg-[#FF3FA4]/10'
                             }`}
                         >
                           {play.choice === 'UP' ? '↑ UP' : play.choice === 'SAME' ? '= SAME' : '↓ DOWN'}
@@ -1235,10 +1235,10 @@ export default function HiloGame() {
                     <td className="py-2 px-1 text-right whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap inline-flex items-center justify-center ${isWin
-                            ? 'bg-emerald-500/15 text-[#00E5A0] border border-emerald-500/35 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
-                            : item.status === 'ACTIVE'
-                              ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/35'
-                              : 'bg-rose-500/15 text-[#FF416C] border border-rose-500/35 shadow-[0_0_10px_rgba(255,65,108,0.25)]'
+                          ? 'bg-emerald-500/15 text-[#00E5A0] border border-emerald-500/35 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
+                          : item.status === 'ACTIVE'
+                            ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/35'
+                            : 'bg-rose-500/15 text-[#FF416C] border border-rose-500/35 shadow-[0_0_10px_rgba(255,65,108,0.25)]'
                           }`}
                       >
                         {isWin ? 'WIN' : item.status === 'ACTIVE' ? 'ACTIVE' : 'LOSS'}
@@ -1264,10 +1264,10 @@ export default function HiloGame() {
                                 <span className="font-bold font-mono text-white">{play.nextCard.code}</span>
                                 <span
                                   className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black whitespace-nowrap leading-none ${play.choice === 'UP'
-                                      ? 'text-[#00D9FF] bg-[#00D9FF]/10 border border-[#00D9FF]/30'
-                                      : play.choice === 'SAME'
-                                        ? 'text-[#FFC928] bg-[#FFC928]/10 border border-[#FFC928]/30'
-                                        : 'text-[#FF3FA4] bg-[#FF3FA4]/10 border border-[#FF3FA4]/30'
+                                    ? 'text-[#00D9FF] bg-[#00D9FF]/10 border border-[#00D9FF]/30'
+                                    : play.choice === 'SAME'
+                                      ? 'text-[#FFC928] bg-[#FFC928]/10 border border-[#FFC928]/30'
+                                      : 'text-[#FF3FA4] bg-[#FF3FA4]/10 border border-[#FF3FA4]/30'
                                     }`}
                                 >
                                   {play.choice === 'UP' ? '↑ UP' : play.choice === 'SAME' ? '= SAME' : '↓ DOWN'}
@@ -1276,8 +1276,8 @@ export default function HiloGame() {
                               <div className="flex items-center gap-3">
                                 <span
                                   className={`font-black text-[10px] px-1.5 py-0.5 rounded ${play.result === 'WIN'
-                                      ? 'bg-emerald-500/10 text-emerald-400'
-                                      : 'bg-rose-500/10 text-rose-400'
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : 'bg-rose-500/10 text-rose-400'
                                     }`}
                                 >
                                   {play.result} ({play.predictionMultiplier.toFixed(2)}x)
@@ -1478,8 +1478,8 @@ export default function HiloGame() {
             <button
               onClick={toggleSound}
               className={`hidden sm:flex w-8 h-8 sm:w-9 sm:h-9 rounded-full border items-center justify-center transition-all cursor-pointer shadow-sm ${soundEnabled
-                  ? 'bg-[#101E3D] border-[#287BFF]/50 text-[#00D9FF] shadow-[0_0_12px_rgba(0,217,255,0.25)]'
-                  : 'bg-[#0c1833] border-[#1d325c] text-slate-500 hover:text-slate-300'
+                ? 'bg-[#101E3D] border-[#287BFF]/50 text-[#00D9FF] shadow-[0_0_12px_rgba(0,217,255,0.25)]'
+                : 'bg-[#0c1833] border-[#1d325c] text-slate-500 hover:text-slate-300'
                 }`}
               title={soundEnabled ? 'Mute Sound' : 'Enable Sound'}
             >
@@ -1548,8 +1548,8 @@ export default function HiloGame() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             className={`fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-bold shadow-xl border flex items-center gap-2 ${toastMessage.type === 'error'
-                ? 'bg-rose-950/90 text-rose-200 border-rose-600'
-                : 'bg-emerald-950/90 text-emerald-200 border-emerald-600'
+              ? 'bg-rose-950/90 text-rose-200 border-rose-600'
+              : 'bg-emerald-950/90 text-emerald-200 border-emerald-600'
               }`}
           >
             {toastMessage.text}
@@ -1926,11 +1926,10 @@ export default function HiloGame() {
                   type="button"
                   onClick={() => handlePlayPrediction('UP')}
                   disabled={isProcessing || isCardFlipping || !canUpChoice}
-                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${
-                    selectedChoice === 'UP'
+                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${selectedChoice === 'UP'
                       ? 'bg-gradient-to-b from-[#0c224a] to-[#071329] border-[#00D9FF] text-white shadow-[0_0_25px_rgba(0,217,255,0.45)]'
                       : 'bg-gradient-to-b from-[#0a1835] to-[#060f22] border-[#00D9FF]/50 hover:border-[#00D9FF] text-slate-200 hover:text-white shadow-[0_0_15px_rgba(0,217,255,0.15)]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1">
                     <ArrowUp className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#00D9FF] stroke-[3]" />
@@ -1947,11 +1946,10 @@ export default function HiloGame() {
                   type="button"
                   onClick={() => handlePlayPrediction('SAME')}
                   disabled={isProcessing || isCardFlipping || !canSameChoice}
-                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${
-                    selectedChoice === 'SAME'
+                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${selectedChoice === 'SAME'
                       ? 'bg-gradient-to-b from-[#332205] to-[#1a1102] border-[#FFC928] text-white shadow-[0_0_25px_rgba(255,201,40,0.45)]'
                       : 'bg-gradient-to-b from-[#241904] to-[#120d02] border-[#FFC928]/50 hover:border-[#FFC928] text-slate-200 hover:text-white shadow-[0_0_15px_rgba(255,201,40,0.15)]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1">
                     <span className="font-mono text-sm sm:text-base text-[#FFC928] font-black leading-none">=</span>
@@ -1968,11 +1966,10 @@ export default function HiloGame() {
                   type="button"
                   onClick={() => handlePlayPrediction('DOWN')}
                   disabled={isProcessing || isCardFlipping || !canDownChoice}
-                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${
-                    selectedChoice === 'DOWN'
+                  className={`relative py-2 sm:py-2.5 px-1 sm:px-2 rounded-2xl border-2 font-black transition-all flex flex-col items-center justify-center gap-0.5 min-h-[64px] sm:min-h-[76px] cursor-pointer active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed w-full min-w-0 ${selectedChoice === 'DOWN'
                       ? 'bg-gradient-to-b from-[#3a0c20] to-[#1a050f] border-[#EC4899] text-white shadow-[0_0_25px_rgba(236,72,153,0.45)]'
                       : 'bg-gradient-to-b from-[#290918] to-[#14040c] border-[#EC4899]/50 hover:border-[#EC4899] text-slate-200 hover:text-white shadow-[0_0_15px_rgba(236,72,153,0.15)]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-1">
                     <ArrowDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#EC4899] stroke-[3]" />
@@ -2037,11 +2034,10 @@ export default function HiloGame() {
                         type="button"
                         onClick={() => handleQuickAmount(val)}
                         disabled={isProcessing || isSessionActive}
-                        className={`py-1.5 sm:py-1 px-1 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer disabled:opacity-40 text-center flex items-center justify-center ${
-                          isSelected
+                        className={`py-1.5 sm:py-1 px-1 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer disabled:opacity-40 text-center flex items-center justify-center ${isSelected
                             ? 'bg-[#00D9FF] text-[#050B20] font-black shadow-[0_0_12px_rgba(0,217,255,0.6)] border border-[#00D9FF]'
                             : 'bg-[#091329] hover:bg-[#122349] text-[#A8B9DE] hover:text-white border border-[#1b2b4d]'
-                        }`}
+                          }`}
                       >
                         ₹{val}
                       </button>
@@ -2081,11 +2077,10 @@ export default function HiloGame() {
                     type="button"
                     onClick={handleCashout}
                     disabled={!canCashout || isProcessing || isCardFlipping}
-                    className={`w-full relative py-3.5 sm:py-4 px-4 rounded-2xl font-black transition-all flex flex-col items-center justify-center gap-0.5 shadow-2xl cursor-pointer active:scale-[0.98] disabled:opacity-45 disabled:cursor-not-allowed overflow-hidden ${
-                      canCashout
+                    className={`w-full relative py-3.5 sm:py-4 px-4 rounded-2xl font-black transition-all flex flex-col items-center justify-center gap-0.5 shadow-2xl cursor-pointer active:scale-[0.98] disabled:opacity-45 disabled:cursor-not-allowed overflow-hidden ${canCashout
                         ? 'bg-gradient-to-r from-[#00b06f] via-[#00e5a0] to-[#00b06f] hover:from-[#00c57c] hover:to-[#00f3aa] text-[#050b1a] shadow-[0_0_30px_rgba(0,229,160,0.55)] border-2 border-[#54ffcc]'
                         : 'bg-[#091a1e] border-2 border-[#123830] text-slate-400'
-                    }`}
+                      }`}
                   >
                     {canCashout && (
                       <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full animate-[shimmer_2s_infinite]" />
@@ -2521,8 +2516,8 @@ export default function HiloGame() {
                           <div className="flex items-center gap-3">
                             <div
                               className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${isWin
-                                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                                 }`}
                             >
                               {isWin ? 'W' : 'L'}

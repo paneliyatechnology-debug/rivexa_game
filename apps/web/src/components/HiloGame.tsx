@@ -196,7 +196,7 @@ export default function HiloGame() {
   const [historyTotal, setHistoryTotal] = useState<number>(0);
   const [isHistoryLoading, setIsHistoryLoading] = useState<boolean>(false);
   const [historyError, setHistoryError] = useState<boolean>(false);
-  const [historyViewMode, setHistoryViewMode] = useState<'cards' | 'table'>('table');
+  const [historyViewMode, setHistoryViewMode] = useState<'cards' | 'table'>('cards');
 
   const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -958,10 +958,10 @@ export default function HiloGame() {
     );
   };
 
-  // Render Compact History Cards (For mobile screens and compact view)
+  // Render Compact & Responsive History Cards
   const renderHistoryCardList = () => {
     return (
-      <div className="space-y-2.5 w-full">
+      <div className="space-y-3 w-full">
         {sessionHistory.map((item, idx) => {
           const originalBet = item.originalBet || item.betAmount || 0;
           const payout = item.payout !== undefined ? item.payout : (item.cashoutAmount || 0);
@@ -980,41 +980,53 @@ export default function HiloGame() {
           return (
             <div
               key={item.id || item.sessionId || idx}
-              className="bg-[#060c18] border border-white/10 rounded-2xl p-3 flex flex-col gap-2 hover:border-[#287BFF]/40 transition-colors shadow-sm w-full"
+              className={`relative overflow-hidden rounded-2xl p-3 sm:p-3.5 transition-all shadow-lg flex flex-col gap-2.5 border ${
+                isWin
+                  ? 'bg-gradient-to-r from-[#081b29] via-[#091f2e] to-[#061424] border-[#00E5A0]/30 hover:border-[#00E5A0]/60'
+                  : item.status === 'ACTIVE'
+                    ? 'bg-gradient-to-r from-[#091a38] via-[#081833] to-[#051126] border-[#00D9FF]/40 hover:border-[#00D9FF]'
+                    : 'bg-gradient-to-r from-[#1c0c1b] via-[#160a17] to-[#0d060e] border-[#FF416C]/30 hover:border-[#FF416C]/60'
+              }`}
             >
-              {/* ROW 1: #1   06:28 PM                 WIN ✅ */}
+              {/* Header: #1 • Time | Result Badge */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 font-mono text-xs">
                   <span className="font-bold text-[#A8B9DE]">#{rowNumber}</span>
-                  <span className="text-[#7285AE]">{timeFormatted}</span>
+                  <span className="text-[#7285AE]">({timeFormatted})</span>
                 </div>
                 <div>
                   <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase inline-flex items-center gap-1 ${isWin
-                      ? 'bg-emerald-500/20 text-[#00E5A0] border border-emerald-500/35'
-                      : item.status === 'ACTIVE'
-                        ? 'bg-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/35'
-                        : 'bg-rose-500/20 text-rose-400 border border-rose-500/35'
-                      }`}
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider inline-flex items-center gap-1 shadow-sm ${
+                      isWin
+                        ? 'bg-emerald-500/20 text-[#00E5A0] border border-emerald-500/40 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
+                        : item.status === 'ACTIVE'
+                          ? 'bg-[#00D9FF]/20 text-[#00D9FF] border border-[#00D9FF]/40 shadow-[0_0_10px_rgba(0,217,255,0.25)]'
+                          : 'bg-rose-500/20 text-[#FF416C] border border-rose-500/40 shadow-[0_0_10px_rgba(255,65,108,0.25)]'
+                    }`}
                   >
-                    <span>{isWin ? 'WIN ✅' : item.status === 'ACTIVE' ? 'ACTIVE ⚡' : 'LOSS ❌'}</span>
+                    {isWin ? 'WIN ✅' : item.status === 'ACTIVE' ? 'ACTIVE ⚡' : 'LOSS ❌'}
                   </span>
                 </div>
               </div>
 
-              {/* ROW 2: A♥ → J♥          ↓ DOWN */}
-              <div className="flex items-center justify-between py-0.5">
-                <div className="flex items-center gap-1.5">
+              {/* Cards Transition Row & Choice Badge */}
+              <div className="flex items-center justify-between py-1.5 px-2.5 rounded-xl bg-black/35 border border-white/5">
+                {/* Cards Badges: Current -> Next */}
+                <div className="flex items-center gap-2">
                   {item.currentCard ? (
-                    <span className={`font-mono font-black text-xs px-2 py-0.5 rounded bg-slate-900 border border-white/10 ${item.currentCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}`}>
+                    <span className={`inline-flex items-center gap-1 font-mono font-black text-xs sm:text-sm px-2 py-0.5 rounded-lg bg-[#081226] border border-white/15 shadow-inner ${
+                      item.currentCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'
+                    }`}>
                       {item.currentCard.rank}{item.currentCard.suitSymbol}
                     </span>
                   ) : (
                     <span className="text-slate-500 font-mono text-xs">-</span>
                   )}
-                  <span className="text-slate-500 text-xs font-bold">→</span>
+                  <span className="text-[#7285AE] text-xs font-bold">→</span>
                   {item.nextCard ? (
-                    <span className={`font-mono font-black text-xs px-2 py-0.5 rounded bg-slate-900 border border-white/10 ${item.nextCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}`}>
+                    <span className={`inline-flex items-center gap-1 font-mono font-black text-xs sm:text-sm px-2 py-0.5 rounded-lg bg-[#081226] border border-white/15 shadow-inner ${
+                      item.nextCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'
+                    }`}>
                       {item.nextCard.rank}{item.nextCard.suitSymbol}
                     </span>
                   ) : (
@@ -1022,100 +1034,97 @@ export default function HiloGame() {
                   )}
                 </div>
 
-                <div>
+                {/* Choice Badge & Multiplier */}
+                <div className="flex items-center gap-2">
                   {choiceVal === 'SAME' ? (
-                    <span className="inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-black text-[#FFC928] bg-[#FFC928]/15 border border-[#FFC928]/40 shadow-[0_0_10px_rgba(255,201,40,0.2)] whitespace-nowrap leading-none">
-                      <span>=</span>
-                      <span>SAME</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] sm:text-xs font-black text-[#FFC928] bg-[#FFC928]/15 border border-[#FFC928]/40 shadow-[0_0_8px_rgba(255,201,40,0.2)]">
+                      = SAME
                     </span>
                   ) : choiceVal === 'UP' ? (
-                    <span className="inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-black text-[#00D9FF] bg-[#00D9FF]/15 border border-[#00D9FF]/40 whitespace-nowrap leading-none">
-                      <span>↑</span>
-                      <span>UP</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] sm:text-xs font-black text-[#00D9FF] bg-[#00D9FF]/15 border border-[#00D9FF]/40 shadow-[0_0_8px_rgba(0,217,255,0.2)]">
+                      ↑ UP
                     </span>
                   ) : choiceVal === 'DOWN' ? (
-                    <span className="inline-flex items-center justify-center gap-1 px-2.5 py-0.5 rounded text-[10px] font-black text-[#FF3FA4] bg-[#FF3FA4]/15 border border-[#FF3FA4]/40 whitespace-nowrap leading-none">
-                      <span>↓</span>
-                      <span>DOWN</span>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] sm:text-xs font-black text-[#FF3FA4] bg-[#FF3FA4]/15 border border-[#FF3FA4]/40 shadow-[0_0_8px_rgba(255,63,164,0.2)]">
+                      ↓ DOWN
                     </span>
                   ) : (
                     <span className="text-slate-500 font-mono text-xs">-</span>
                   )}
-                </div>
-              </div>
 
-              {/* ROW 3: 15.14x      Bet ₹100      Payout ₹1,514 */}
-              <div className="flex items-center justify-between text-xs pt-1.5 border-t border-white/5 font-mono">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-[#00D9FF] bg-[#00D9FF]/10 px-1.5 py-0.5 rounded border border-[#00D9FF]/25">
+                  <span className="font-mono font-black text-xs sm:text-sm text-[#00D9FF] bg-[#00D9FF]/10 px-2 py-0.5 rounded-lg border border-[#00D9FF]/30">
                     {mult.toFixed(2)}x
                   </span>
-                  <span className="text-slate-400 text-[11px]">
-                    Bet ₹{Math.round(originalBet).toLocaleString('en-IN')}
-                  </span>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[10px] text-[#7285AE] mr-1 uppercase">Payout:</span>
-                  <span className="font-bold text-[#00E5A0]">
-                    ₹{Math.round(payout).toLocaleString('en-IN')}
-                  </span>
                 </div>
               </div>
 
-              {/* ROW 4: Profit/Loss & Plays Details Button */}
-              <div className="flex items-center justify-between text-xs pt-0.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[#7285AE] uppercase">Profit:</span>
-                  {profit > 0 ? (
-                    <span className="font-mono font-black text-[#00E5A0]">
-                      +₹{Math.round(profit).toLocaleString('en-IN')}
-                    </span>
-                  ) : profit < 0 ? (
-                    <span className="font-mono font-black text-[#FF416C]">
-                      -₹{Math.round(Math.abs(profit)).toLocaleString('en-IN')}
-                    </span>
-                  ) : (
-                    <span className="font-mono text-slate-400">₹0</span>
+              {/* Financial Stats: Bet, Payout, Profit */}
+              <div className="flex items-center justify-between text-xs pt-1 border-t border-white/5">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <span className="text-[10px] text-[#7285AE] uppercase mr-1">Bet:</span>
+                    <span className="font-mono font-bold text-slate-200">₹{Math.round(originalBet).toLocaleString('en-IN')}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-[#7285AE] uppercase mr-1">Payout:</span>
+                    <span className="font-mono font-bold text-[#00E5A0]">₹{Math.round(payout).toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <span className="text-[10px] text-[#7285AE] uppercase mr-1">P/L:</span>
+                    {profit > 0 ? (
+                      <span className="font-mono font-black text-sm text-[#00E5A0] drop-shadow-[0_0_6px_rgba(0,229,160,0.4)]">
+                        +₹{Math.round(profit).toLocaleString('en-IN')}
+                      </span>
+                    ) : profit < 0 ? (
+                      <span className="font-mono font-black text-xs text-[#FF416C]">
+                        -₹{Math.round(Math.abs(profit)).toLocaleString('en-IN')}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-slate-400 text-xs">₹0</span>
+                    )}
+                  </div>
+
+                  {item.plays && item.plays.length > 0 && (
+                    <button
+                      onClick={() => setExpandedSessionId(isExpanded ? null : item.sessionId)}
+                      className="px-2 py-1 rounded-lg bg-[#101E3D] hover:bg-[#182C5A] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer inline-flex items-center gap-1 transition-colors border border-[#22396E]"
+                    >
+                      <span>{isExpanded ? 'Hide' : `${item.plays.length} plays`}</span>
+                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
                   )}
                 </div>
-
-                {item.plays && item.plays.length > 0 && (
-                  <button
-                    onClick={() => setExpandedSessionId(isExpanded ? null : item.sessionId)}
-                    className="px-2 py-0.5 rounded-lg bg-[#101E3D] hover:bg-[#182C5A] text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer inline-flex items-center gap-1 transition-colors border border-[#22396E]"
-                  >
-                    <span>{isExpanded ? 'Hide' : `${item.plays.length} plays`}</span>
-                    {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                  </button>
-                )}
               </div>
 
-              {/* Expandable Streak sequence inside card */}
+              {/* Expandable Streak Sequence */}
               {isExpanded && item.plays && item.plays.length > 0 && (
-                <div className="mt-1.5 pt-2 border-t border-white/5 space-y-1.5 pl-2 border-l-2 border-[#287BFF]/40 text-xs">
+                <div className="mt-1 pt-2 border-t border-white/5 space-y-1.5 pl-3 border-l-2 border-[#287BFF]/50 bg-black/20 rounded-r-xl p-2">
                   <span className="text-[10px] font-bold text-[#7285AE] uppercase tracking-wider block">
-                    Sequence:
+                    Prediction History ({item.plays.length} rounds):
                   </span>
                   {item.plays.map((play, pIdx) => (
-                    <div key={pIdx} className="flex items-center justify-between text-[11px] py-1 border-b border-white/5 last:border-b-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[#7285AE] font-mono">#{play.sequence}</span>
-                        <span className="font-mono font-bold text-white">{play.previousCard.code}</span>
+                    <div key={pIdx} className="flex items-center justify-between text-xs py-1 border-b border-white/5 last:border-b-0">
+                      <div className="flex items-center gap-2 font-mono">
+                        <span className="text-[#7285AE] text-[10px]">#{play.sequence}</span>
+                        <span className="font-bold text-white">{play.previousCard.code}</span>
                         <span className="text-slate-500">→</span>
-                        <span className="font-mono font-bold text-white">{play.nextCard.code}</span>
+                        <span className="font-bold text-white">{play.nextCard.code}</span>
                         <span
-                          className={`inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-black ${play.choice === 'UP'
-                            ? 'text-[#00D9FF] bg-[#00D9FF]/10'
-                            : play.choice === 'SAME'
-                              ? 'text-[#FFC928] bg-[#FFC928]/10'
-                              : 'text-[#FF3FA4] bg-[#FF3FA4]/10'
-                            }`}
+                          className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded text-[9px] font-black ${
+                            play.choice === 'UP'
+                              ? 'text-[#00D9FF] bg-[#00D9FF]/10'
+                              : play.choice === 'SAME'
+                                ? 'text-[#FFC928] bg-[#FFC928]/10'
+                                : 'text-[#FF3FA4] bg-[#FF3FA4]/10'
+                          }`}
                         >
                           {play.choice === 'UP' ? '↑ UP' : play.choice === 'SAME' ? '= SAME' : '↓ DOWN'}
                         </span>
                       </div>
-                      <span className={`font-black text-[10px] ${play.result === 'WIN' ? 'text-[#00E5A0]' : 'text-[#FF416C]'}`}>
+                      <span className={`font-black text-[11px] font-mono ${play.result === 'WIN' ? 'text-[#00E5A0]' : 'text-[#FF416C]'}`}>
                         {play.predictionMultiplier.toFixed(2)}x {play.result}
                       </span>
                     </div>
@@ -1129,22 +1138,22 @@ export default function HiloGame() {
     );
   };
 
-  // Render Full History Table (For desktop history column)
+  // Render Full Responsive History Table
   const renderHistoryTableList = () => {
     return (
-      <div className="overflow-x-auto [scrollbar-width:thin] w-full">
-        <table className="w-full text-left border-collapse text-xs">
+      <div className="overflow-x-auto [scrollbar-width:thin] [scrollbar-color:#22396E_transparent] w-full rounded-xl border border-[#1b2b4d] bg-[#050c1e]">
+        <table className="w-full text-left border-collapse text-xs min-w-[620px]">
           <thead>
-            <tr className="border-b border-white/5 text-[#7285AE] text-[10px] font-bold">
-              <th className="py-2 px-1 whitespace-nowrap">#</th>
-              <th className="py-2 px-1 whitespace-nowrap">Time</th>
-              <th className="py-2 px-1 whitespace-nowrap">Cards</th>
-              <th className="py-2 px-1 whitespace-nowrap">Choice</th>
-              <th className="py-2 px-1 whitespace-nowrap">Multiplier</th>
-              <th className="py-2 px-1 whitespace-nowrap">Bet</th>
-              <th className="py-2 px-1 whitespace-nowrap">Payout</th>
-              <th className="py-2 px-1 whitespace-nowrap">P/L</th>
-              <th className="py-2 px-1 text-right whitespace-nowrap">Result</th>
+            <tr className="bg-[#091530] border-b border-[#1b2b4d] text-[#7285AE] text-[10px] sm:text-[11px] font-black uppercase tracking-wider">
+              <th className="py-2.5 px-2.5 whitespace-nowrap">#</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Time</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Cards</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Choice</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Mult</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Bet</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">Payout</th>
+              <th className="py-2.5 px-2.5 whitespace-nowrap">P/L</th>
+              <th className="py-2.5 px-2.5 text-right whitespace-nowrap">Result</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
@@ -1167,26 +1176,26 @@ export default function HiloGame() {
                 <React.Fragment key={item.id || item.sessionId || idx}>
                   <tr
                     onClick={() => item.plays && item.plays.length > 0 && setExpandedSessionId(isExpanded ? null : item.sessionId)}
-                    className={`hover:bg-white/[0.03] transition-colors font-medium ${item.plays && item.plays.length > 0 ? 'cursor-pointer' : ''}`}
+                    className={`hover:bg-[#0d1e40] transition-colors font-medium ${item.plays && item.plays.length > 0 ? 'cursor-pointer' : ''}`}
                   >
-                    <td className="py-2 px-1 font-mono text-[10px] text-[#A8B9DE] whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 font-mono text-xs text-[#A8B9DE] whitespace-nowrap">
                       #{rowNumber}
                     </td>
-                    <td className="py-2 px-1 font-mono text-[10px] text-[#7285AE] whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 font-mono text-xs text-[#7285AE] whitespace-nowrap">
                       {timeFormatted}
                     </td>
-                    <td className="py-2 px-1 whitespace-nowrap">
-                      <div className="flex items-center gap-0.5 font-mono font-bold text-[11px] whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1 font-mono font-bold text-xs whitespace-nowrap">
                         {item.currentCard ? (
-                          <span className={item.currentCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}>
+                          <span className={`px-1.5 py-0.5 rounded bg-black/40 border border-white/10 ${item.currentCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}`}>
                             {item.currentCard.rank}{item.currentCard.suitSymbol}
                           </span>
                         ) : (
                           <span className="text-slate-500 font-mono">-</span>
                         )}
-                        <span className="text-slate-500 text-[9px]">→</span>
+                        <span className="text-slate-500 text-xs">→</span>
                         {item.nextCard ? (
-                          <span className={item.nextCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}>
+                          <span className={`px-1.5 py-0.5 rounded bg-black/40 border border-white/10 ${item.nextCard.color === 'red' ? 'text-[#FF416C]' : 'text-slate-100'}`}>
                             {item.nextCard.rank}{item.nextCard.suitSymbol}
                           </span>
                         ) : (
@@ -1194,52 +1203,50 @@ export default function HiloGame() {
                         )}
                       </div>
                     </td>
-                    <td className="py-2 px-1 whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 whitespace-nowrap">
                       {choiceVal === 'SAME' ? (
-                        <span className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black text-[#FFC928] bg-[#FFC928]/15 border border-[#FFC928]/40 shadow-[0_0_10px_rgba(255,201,40,0.2)] whitespace-nowrap leading-none">
-                          <span>=</span>
-                          <span>SAME</span>
+                        <span className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-black text-[#FFC928] bg-[#FFC928]/15 border border-[#FFC928]/40 whitespace-nowrap">
+                          = SAME
                         </span>
                       ) : choiceVal === 'UP' ? (
-                        <span className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black text-[#00D9FF] bg-[#00D9FF]/15 border border-[#00D9FF]/40 whitespace-nowrap leading-none">
-                          <span>↑</span>
-                          <span>UP</span>
+                        <span className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-black text-[#00D9FF] bg-[#00D9FF]/15 border border-[#00D9FF]/40 whitespace-nowrap">
+                          ↑ UP
                         </span>
                       ) : choiceVal === 'DOWN' ? (
-                        <span className="inline-flex items-center justify-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black text-[#FF3FA4] bg-[#FF3FA4]/15 border border-[#FF3FA4]/40 whitespace-nowrap leading-none">
-                          <span>↓</span>
-                          <span>DOWN</span>
+                        <span className="inline-flex items-center justify-center gap-0.5 px-2 py-0.5 rounded text-[10px] font-black text-[#FF3FA4] bg-[#FF3FA4]/15 border border-[#FF3FA4]/40 whitespace-nowrap">
+                          ↓ DOWN
                         </span>
                       ) : (
-                        <span className="text-slate-500 font-mono text-[10px]">-</span>
+                        <span className="text-slate-500 font-mono text-xs">-</span>
                       )}
                     </td>
-                    <td className="py-2 px-1 font-mono font-bold text-[11px] text-[#00D9FF] whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 font-mono font-black text-xs text-[#00D9FF] whitespace-nowrap">
                       {mult.toFixed(2)}x
                     </td>
-                    <td className="py-2 px-1 font-mono text-[10px] text-slate-300 whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 font-mono text-xs text-slate-200 whitespace-nowrap">
                       ₹{Math.round(originalBet).toLocaleString('en-IN')}
                     </td>
-                    <td className={`py-2 px-1 font-mono font-bold text-[10px] whitespace-nowrap ${payout > 0 ? 'text-[#00E5A0]' : 'text-slate-400'}`}>
+                    <td className={`py-2.5 px-2.5 font-mono font-bold text-xs whitespace-nowrap ${payout > 0 ? 'text-[#00E5A0]' : 'text-slate-400'}`}>
                       ₹{Math.round(payout).toLocaleString('en-IN')}
                     </td>
-                    <td className="py-2 px-1 font-mono font-bold text-[10px] whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 font-mono font-bold text-xs whitespace-nowrap">
                       {profit > 0 ? (
-                        <span className="text-[#00E5A0]">+₹{Math.round(profit).toLocaleString('en-IN')}</span>
+                        <span className="text-[#00E5A0] font-black">+₹{Math.round(profit).toLocaleString('en-IN')}</span>
                       ) : profit < 0 ? (
                         <span className="text-[#FF416C]">-₹{Math.round(Math.abs(profit)).toLocaleString('en-IN')}</span>
                       ) : (
                         <span className="text-slate-400">₹0</span>
                       )}
                     </td>
-                    <td className="py-2 px-1 text-right whitespace-nowrap">
+                    <td className="py-2.5 px-2.5 text-right whitespace-nowrap">
                       <span
-                        className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase whitespace-nowrap inline-flex items-center justify-center ${isWin
-                          ? 'bg-emerald-500/15 text-[#00E5A0] border border-emerald-500/35 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
-                          : item.status === 'ACTIVE'
-                            ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/35'
-                            : 'bg-rose-500/15 text-[#FF416C] border border-rose-500/35 shadow-[0_0_10px_rgba(255,65,108,0.25)]'
-                          }`}
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase whitespace-nowrap inline-flex items-center justify-center ${
+                          isWin
+                            ? 'bg-emerald-500/15 text-[#00E5A0] border border-emerald-500/35 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
+                            : item.status === 'ACTIVE'
+                              ? 'bg-[#00D9FF]/15 text-[#00D9FF] border border-[#00D9FF]/35'
+                              : 'bg-rose-500/15 text-[#FF416C] border border-rose-500/35 shadow-[0_0_10px_rgba(255,65,108,0.25)]'
+                        }`}
                       >
                         {isWin ? 'WIN' : item.status === 'ACTIVE' ? 'ACTIVE' : 'LOSS'}
                       </span>
@@ -1263,22 +1270,24 @@ export default function HiloGame() {
                                 <span className="text-slate-400">→</span>
                                 <span className="font-bold font-mono text-white">{play.nextCard.code}</span>
                                 <span
-                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black whitespace-nowrap leading-none ${play.choice === 'UP'
-                                    ? 'text-[#00D9FF] bg-[#00D9FF]/10 border border-[#00D9FF]/30'
-                                    : play.choice === 'SAME'
-                                      ? 'text-[#FFC928] bg-[#FFC928]/10 border border-[#FFC928]/30'
-                                      : 'text-[#FF3FA4] bg-[#FF3FA4]/10 border border-[#FF3FA4]/30'
-                                    }`}
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-black whitespace-nowrap leading-none ${
+                                    play.choice === 'UP'
+                                      ? 'text-[#00D9FF] bg-[#00D9FF]/10 border border-[#00D9FF]/30'
+                                      : play.choice === 'SAME'
+                                        ? 'text-[#FFC928] bg-[#FFC928]/10 border border-[#FFC928]/30'
+                                        : 'text-[#FF3FA4] bg-[#FF3FA4]/10 border border-[#FF3FA4]/30'
+                                  }`}
                                 >
                                   {play.choice === 'UP' ? '↑ UP' : play.choice === 'SAME' ? '= SAME' : '↓ DOWN'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-3">
                                 <span
-                                  className={`font-black text-[10px] px-1.5 py-0.5 rounded ${play.result === 'WIN'
-                                    ? 'bg-emerald-500/10 text-emerald-400'
-                                    : 'bg-rose-500/10 text-rose-400'
-                                    }`}
+                                  className={`font-black text-[10px] px-1.5 py-0.5 rounded ${
+                                    play.result === 'WIN'
+                                      ? 'bg-emerald-500/10 text-emerald-400'
+                                      : 'bg-rose-500/10 text-rose-400'
+                                  }`}
                                 >
                                   {play.result} ({play.predictionMultiplier.toFixed(2)}x)
                                 </span>
@@ -1585,7 +1594,7 @@ export default function HiloGame() {
 
       {/* ─── MAIN CONTENT (DESKTOP 3-COLUMN / MOBILE 1-COLUMN) ─── */}
       <main className="flex-1 max-w-[1580px] mx-auto w-full px-2 sm:px-4 lg:px-6 py-3 sm:py-5 min-w-0">
-        <div className="grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)_minmax(360px,430px)] gap-3 sm:gap-4 lg:gap-5 items-start w-full min-w-0">
+        <div className="grid grid-cols-1 lg:grid-cols-[230px_minmax(0,1fr)_380px] xl:grid-cols-[240px_minmax(0,1fr)_420px] 2xl:grid-cols-[250px_minmax(0,1fr)_450px] gap-3 sm:gap-4 lg:gap-5 items-start w-full min-w-0">
 
           {/* ═══════════════════════════════════════════════════════════════ */}
           {/* ─── 1. LEFT COLUMN: HILO SIDEBAR (Desktop Sticky Panel) ─── */}
@@ -2128,90 +2137,79 @@ export default function HiloGame() {
           {/* ─── END OF LEFT COLUMN: COMPLETE HILO GAME ─── */}
 
           {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
           {/* ─── RIGHT COLUMN: RECENT HILO HISTORY (~30–35% WIDTH) ─── */}
           {/* ═══════════════════════════════════════════════════════════════ */}
           <div className="w-full min-w-0 lg:sticky lg:top-[68px] lg:self-start">
-            <div className="bg-[#081226]/90 border border-[#1b2b4d] rounded-2xl sm:rounded-3xl p-3 sm:p-4 lg:p-5 shadow-xl flex flex-col w-full max-w-full lg:max-h-[calc(100vh-84px)] overflow-hidden">
-              {/* Header Row: Title, View Switcher & Refresh Button */}
-              <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-white/5 shrink-0">
+            <div className="bg-[#081226]/95 border border-[#1b2b4d] rounded-2xl sm:rounded-3xl p-3 sm:p-4 lg:p-5 shadow-2xl flex flex-col w-full max-w-full lg:max-h-[calc(100vh-84px)] overflow-hidden">
+              {/* Header Row: Title, Dual View Switcher Tab & Refresh Button */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/10 shrink-0">
                 <div className="flex items-center gap-2 shrink-0">
-                  <Clock className="w-4 h-4 text-[#00D9FF]" />
+                  <Clock className="w-4.5 h-4.5 text-[#00D9FF]" />
                   <h3 className="text-sm sm:text-base font-black text-white whitespace-nowrap">Recent HILO History</h3>
                 </div>
+
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setHistoryViewMode(historyViewMode === 'cards' ? 'table' : 'cards')}
-                    className="hidden xl:inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-[#101E3D] hover:bg-[#182C5A] text-[10px] font-bold text-[#A8B9DE] hover:text-white border border-[#22396E] transition-colors cursor-pointer"
-                    title={historyViewMode === 'cards' ? 'Switch to Table View' : 'Switch to Cards View'}
-                  >
-                    {historyViewMode === 'cards' ? '📊 Table' : '🗂️ Cards'}
-                  </button>
+                  {/* Dual View Switcher Tab Pill (Cards vs Table) */}
+                  <div className="flex items-center bg-[#060e20] border border-[#1d325c] p-0.5 rounded-xl shadow-inner">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryViewMode('cards')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        historyViewMode === 'cards'
+                          ? 'bg-gradient-to-r from-[#2563EB] to-[#00D9FF] text-white font-black shadow-[0_0_12px_rgba(0,217,255,0.45)]'
+                          : 'text-[#7285AE] hover:text-white'
+                      }`}
+                      title="Cards View"
+                    >
+                      <span className="text-xs">🗂️</span>
+                      <span>Cards</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryViewMode('table')}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        historyViewMode === 'table'
+                          ? 'bg-gradient-to-r from-[#2563EB] to-[#00D9FF] text-white font-black shadow-[0_0_12px_rgba(0,217,255,0.45)]'
+                          : 'text-[#7285AE] hover:text-white'
+                      }`}
+                      title="Table View"
+                    >
+                      <span className="text-xs">📊</span>
+                      <span>Table</span>
+                    </button>
+                  </div>
+
                   <button
                     type="button"
                     onClick={() => fetchHistory(historyPage)}
                     disabled={isHistoryLoading}
-                    className="text-xs font-bold text-[#00D9FF] hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50 shrink-0 whitespace-nowrap"
+                    className="p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-[#0e1f42] hover:bg-[#152e61] text-[#00D9FF] border border-[#00D9FF]/30 text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0 transition-all active:scale-95"
+                    title="Refresh History"
                   >
                     <RotateCcw className={`w-3.5 h-3.5 ${isHistoryLoading ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
+                    <span className="hidden sm:inline">Refresh</span>
                   </button>
                 </div>
               </div>
 
               {/* Scrollable Records Container (independent vertical scrolling on desktop) */}
-              <div className="flex-1 lg:overflow-y-auto lg:overflow-x-hidden py-2 space-y-2.5 [scrollbar-width:thin] [scrollbar-color:#22396E_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[#22396E] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+              <div className="flex-1 lg:overflow-y-auto lg:overflow-x-hidden py-3 space-y-2.5 [scrollbar-width:thin] [scrollbar-color:#22396E_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-[#22396E] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
                 {authLoading || isHistoryLoading ? (
-                  <>
-                    {/* Mobile skeleton */}
-                    <div className="block lg:hidden space-y-2.5 animate-pulse">
-                      {[...Array(3)].map((_, idx) => (
-                        <div key={idx} className="bg-[#060c18] border border-white/5 rounded-2xl p-3 space-y-2">
-                          <div className="flex justify-between items-center">
-                            <div className="h-3 w-20 bg-slate-800 rounded"></div>
-                            <div className="h-4 w-12 bg-slate-800 rounded-full"></div>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <div className="h-5 w-24 bg-slate-800 rounded"></div>
-                            <div className="h-5 w-16 bg-slate-800 rounded"></div>
-                          </div>
+                  <div className="space-y-3 animate-pulse">
+                    {[...Array(4)].map((_, idx) => (
+                      <div key={idx} className="bg-[#060c18] border border-white/5 rounded-2xl p-3.5 space-y-2.5">
+                        <div className="flex justify-between items-center">
+                          <div className="h-3.5 w-24 bg-slate-800 rounded"></div>
+                          <div className="h-4 w-14 bg-slate-800 rounded-full"></div>
                         </div>
-                      ))}
-                    </div>
-                    {/* Desktop skeleton */}
-                    <div className="hidden lg:block overflow-x-auto [scrollbar-width:thin]">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="border-b border-white/5 text-[#7285AE] text-[10px] font-bold">
-                            <th className="py-2 px-1 whitespace-nowrap">#</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Time</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Cards</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Choice</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Multiplier</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Bet</th>
-                            <th className="py-2 px-1 whitespace-nowrap">Payout</th>
-                            <th className="py-2 px-1 whitespace-nowrap">P/L</th>
-                            <th className="py-2 px-1 text-right whitespace-nowrap">Result</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {[...Array(5)].map((_, idx) => (
-                            <tr key={idx} className="animate-pulse">
-                              <td className="py-2 px-1"><div className="h-3 w-5 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-3 w-12 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-4 w-12 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-4 w-12 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-3 w-8 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-3 w-10 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-3 w-10 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1"><div className="h-3 w-10 bg-slate-800/80 rounded"></div></td>
-                              <td className="py-2 px-1 text-right"><div className="h-4 w-10 bg-slate-800/80 rounded ml-auto"></div></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
+                        <div className="flex justify-between items-center">
+                          <div className="h-6 w-28 bg-slate-800 rounded"></div>
+                          <div className="h-6 w-20 bg-slate-800 rounded"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 ) : historyError ? (
                   <div className="py-8 text-center space-y-3">
                     <p className="text-xs text-rose-400 font-bold">Unable to load HILO history.</p>
@@ -2224,23 +2222,15 @@ export default function HiloGame() {
                     </button>
                   </div>
                 ) : sessionHistory.length === 0 ? (
-                  <div className="py-10 text-center space-y-2">
-                    <div className="text-2xl">🕘</div>
+                  <div className="py-12 text-center space-y-2">
+                    <div className="text-3xl">🕘</div>
                     <p className="text-sm font-bold text-white">No HILO bets yet</p>
                     <p className="text-xs text-[#7285AE]">Your completed HILO bets will appear here.</p>
                   </div>
                 ) : (
-                  <>
-                    {/* ─── MOBILE VIEW (< lg): Always render compact cards per Requirement 25 ─── */}
-                    <div className="block lg:hidden w-full">
-                      {renderHistoryCardList()}
-                    </div>
-
-                    {/* ─── DESKTOP VIEW (>= lg): Render Table (or Cards if toggled) per Requirement 14 ─── */}
-                    <div className="hidden lg:block w-full">
-                      {historyViewMode === 'cards' ? renderHistoryCardList() : renderHistoryTableList()}
-                    </div>
-                  </>
+                  <div className="w-full">
+                    {historyViewMode === 'cards' ? renderHistoryCardList() : renderHistoryTableList()}
+                  </div>
                 )}
               </div>
 

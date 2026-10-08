@@ -28,7 +28,7 @@ export function TopHeader({
   const router = useRouter();
   const pathname = usePathname();
   const { user: authUser, balance: contextBalance, logout } = useAuth();
-  const displayBalance = balance !== undefined ? balance : contextBalance;
+  const displayBalance = contextBalance !== undefined && contextBalance !== null ? contextBalance : (balance ?? 0);
 
   // Initial state matches server HTML (false) to prevent Next.js hydration error
   const [muted, setMuted] = useState<boolean>(false);

@@ -69,6 +69,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const mainBal = Number(data.mainBalance);
         if (!isNaN(mainBal)) {
           setBalance(mainBal);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rivexa_wallet_balance', String(mainBal));
+          }
         }
       }
     } catch (e) {
@@ -113,6 +116,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (typeof window !== 'undefined') {
           localStorage.setItem('rivexa_user', JSON.stringify(userData));
+          if (!isNaN(bal)) {
+            localStorage.setItem('rivexa_wallet_balance', String(bal));
+          }
         }
 
         if (userData?.id) {
@@ -122,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('rivexa_token');
           localStorage.removeItem('rivexa_user');
+          localStorage.removeItem('rivexa_wallet_balance');
         }
         setUser(null);
         setIsAuthenticated(false);
@@ -175,6 +182,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     fetchUser();
   }, [fetchUser]);
+
+  // Real-time Custom Event Wallet Balance Synchronization
+  useEffect(() => {
+    const handleCustomWalletUpdate = (e: Event) => {
+      const custom = e as CustomEvent;
+      if (custom?.detail?.balance !== undefined) {
+        const bal = Number(custom.detail.balance);
+        if (!isNaN(bal)) {
+          setBalance(bal);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rivexa_wallet_balance', String(bal));
+            const cachedUserStr = localStorage.getItem('rivexa_user');
+            if (cachedUserStr) {
+              try {
+                const u = JSON.parse(cachedUserStr);
+                if (!u.wallet) u.wallet = {};
+                u.wallet.mainBalance = bal;
+                localStorage.setItem('rivexa_user', JSON.stringify(u));
+              } catch (err) {}
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('wallet:updated', handleCustomWalletUpdate);
+    return () => {
+      window.removeEventListener('wallet:updated', handleCustomWalletUpdate);
+    };
+  }, []);
 
   // Real-time WebSocket Wallet Balance Synchronization
   useEffect(() => {

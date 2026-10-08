@@ -1,17 +1,13 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
+import { toValidUserId } from '../common/utils/user-id.util.js';
 
 @Injectable()
 export class WalletService {
   constructor(private readonly db: DatabaseService) {}
 
-  private readonly DEMO_UUID = '00000000-0000-0000-0000-000000000000';
-
   private toValidUserId(userId?: string): string {
-    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      return userId;
-    }
-    return this.DEMO_UUID;
+    return toValidUserId(userId);
   }
 
   async getBalance(userId: string) {
@@ -34,9 +30,9 @@ export class WalletService {
             update: {},
             create: {
               id: activeUserId,
-              email: `demo-${activeUserId.slice(0, 8)}@rivexa.com`,
+              email: `user-${activeUserId.slice(0, 8)}@rivexa.com`,
               passwordHash: 'demo',
-              referralCode: `DEMO-${activeUserId.slice(0, 4)}`,
+              referralCode: `REF-${activeUserId.slice(0, 8)}`,
             },
           });
           wallet = await this.db.wallet.upsert({

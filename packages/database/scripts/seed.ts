@@ -19,6 +19,10 @@ async function main() {
     { slug: 'fast-parity', name: 'Fast Parity', category: 'color-prediction', engine: 'realtime', rtpPercentage: 95.0, minBet: 10, maxBet: 20000 },
     { slug: 'spin', name: 'Spin Wheel', category: 'wheel', engine: 'canvas', rtpPercentage: 95.0, minBet: 10, maxBet: 5000 },
     { slug: 'dice', name: 'Dice Roll', category: 'dice', engine: 'interactive', rtpPercentage: 98.0, minBet: 10, maxBet: 10000 },
+    { slug: 'pushparani', name: 'Pushparani', category: 'crash', engine: 'canvas', rtpPercentage: 95.0, minBet: 10, maxBet: 100000 },
+    { slug: 'coin-flip', name: 'Coin Flip', category: 'arcade', engine: 'interactive', rtpPercentage: 98.0, minBet: 10, maxBet: 50000 },
+    { slug: 'hilo', name: 'HILO', category: 'cards', engine: 'interactive', rtpPercentage: 96.0, minBet: 10, maxBet: 50000 },
+    { slug: 'chicken-road', name: 'Chicken Road', category: 'arcade', engine: 'interactive', rtpPercentage: 97.0, minBet: 10, maxBet: 100000 },
   ];
 
   for (const g of gamesData) {

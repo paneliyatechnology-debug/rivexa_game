@@ -6,7 +6,7 @@ import { getApiBaseUrl } from '@/lib/config';
 interface GameControlCenterViewProps {
   gameId: string;
   gameName: string;
-  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip' | 'hilo';
+  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip' | 'hilo' | 'chicken-road';
   icon: string;
   subtitle: string;
   defaultRtp?: number;
@@ -705,7 +705,7 @@ export function GameControlCenterView({
                   </span>
                 </div>
               </div>
-            ) : (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? (
+            ) : (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani' || gameType === 'chicken-road') ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-3">
                   <span className="text-[10px] font-black text-cyan-900 uppercase block">TOTAL ACTIVE PLAYERS IN FLIGHT</span>
@@ -950,7 +950,7 @@ export function GameControlCenterView({
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl py-4 text-center text-xs font-semibold text-slate-400">
                   {gameType === 'mines' ? 'No active Mines game sessions currently playing. Player sessions will display here live.' :
                    gameType === 'hilo' ? 'No active HILO game sessions currently playing. Real player bets and continuous prediction rounds will display here live.' :
-                   (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
+                   (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani' || gameType === 'chicken-road') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
                    `No live bets placed yet for current round ${currentRoundInfo.periodNumber}. Real bets placed by players will display here live.`}
                 </div>
               )
@@ -1865,7 +1865,7 @@ export function GameControlCenterView({
       )}
 
       {/* JET & CRASH & PUSHPARANI OVERRIDE PANEL (SCREENSHOTS 4 & 5) */}
-      {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (
+      {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin' || gameType === 'chicken-road') && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
@@ -2251,7 +2251,7 @@ export function GameControlCenterView({
             )
           )}
 
-          {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (
+          {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin' || gameType === 'chicken-road') && (
             <table className="w-full text-left text-xs font-medium text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
                 <tr>

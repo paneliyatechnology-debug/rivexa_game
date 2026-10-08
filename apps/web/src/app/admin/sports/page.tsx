@@ -492,21 +492,23 @@ function SportsAdminContent() {
   const fetchAdminData = useCallback(async () => {
     setLoading(true);
     try {
-      const catRes = await fetch(`${getApiBaseUrl()}/admin/sports/categories`);
-      const compRes = await fetch(`${getApiBaseUrl()}/admin/sports/competitions`);
-      const matchRes = await fetch(`${getApiBaseUrl()}/admin/sports/matches`);
-      const provRes = await fetch(`${getApiBaseUrl()}/cricket/admin/status`);
+      const [catRes, compRes, matchRes, provRes] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/admin/sports/categories`).catch(() => null),
+        fetch(`${getApiBaseUrl()}/admin/sports/competitions`).catch(() => null),
+        fetch(`${getApiBaseUrl()}/admin/sports/matches`).catch(() => null),
+        fetch(`${getApiBaseUrl()}/cricket/admin/status`).catch(() => null),
+      ]);
 
-      if (catRes.ok) setCategories((await catRes.json()).data || []);
-      if (compRes.ok) setCompetitions((await compRes.json()).data || []);
-      if (matchRes.ok) {
+      if (catRes?.ok) setCategories((await catRes.json()).data || []);
+      if (compRes?.ok) setCompetitions((await compRes.json()).data || []);
+      if (matchRes?.ok) {
         const mList = (await matchRes.json()).data || [];
         setMatches(mList);
         if (mList.length > 0 && !customForm.matchId) {
           setCustomForm((prev) => ({ ...prev, matchId: mList[0].id }));
         }
       }
-      if (provRes.ok) {
+      if (provRes?.ok) {
         const pData = (await provRes.json()).data || null;
         setProviderStatus(pData);
         if (pData?.providerDetails) {

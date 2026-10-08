@@ -925,6 +925,20 @@ export class AdminService {
       isActive: true,
     },
     {
+      id: 'chicken-road',
+      name: 'Chicken Road',
+      slug: 'chicken-road',
+      minBet: 10,
+      maxBet: 100000,
+      description: 'Cross multi-lane traffic checkpoints! Win up to 10,000x multipliers!',
+      badge: 'HOT',
+      badgeClass: 'bg-gradient-to-r from-amber-500 to-emerald-600 text-white font-black',
+      icon: 'bi-egg-fried',
+      iconColor: 'text-amber-500',
+      rtpPercentage: 97,
+      isActive: true,
+    },
+    {
       id: 'coin-flip',
       name: 'Coin Flip',
       slug: 'coin-flip',
@@ -1548,9 +1562,9 @@ export class AdminService {
       openCard = deck[(openH >>> 0) % deck.length];
 
       roundStatus = elapsed < 45 ? `BETTING OPEN (${countdown}s)` : `DEALING CARDS...`;
-    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
+    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
       try {
-        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : this.db.crashRound;
+        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : cleanId.includes('chicken') ? this.db.chickenRoadRound : this.db.crashRound;
         const activeCrash = await roundModel.findFirst({
           orderBy: { createdAt: 'desc' },
         });
@@ -1615,7 +1629,7 @@ export class AdminService {
           });
         }
       } catch (e) {}
-    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
+    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
       try {
         const dbCrash = await this.db.crashRound.findMany({
           orderBy: { createdAt: 'desc' },
@@ -1673,7 +1687,7 @@ export class AdminService {
       const sampleCount = 10;
       settledPeriods = [];
 
-      if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
+      if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
         const sampleMults = [1.31, 4.52, 1.26, 15.86, 1.00, 1.20, 52.60, 3.07, 5.74, 2.15];
         for (let i = 1; i <= sampleCount; i++) {
           const pastTime = new Date(now.getTime() - i * 30 * 1000);
@@ -2501,12 +2515,12 @@ export class AdminService {
       };
     }
 
-    if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
+    if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
       let crashTotalStakes = 0;
       let crashTotalPayouts = 0;
       try {
-        const betModel = cleanId === 'jet' ? this.db.jetBet : cleanId === 'pushparani' ? this.db.pushparaniBet : this.db.crashBet;
-        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : this.db.crashRound;
+        const betModel = cleanId === 'jet' ? this.db.jetBet : cleanId === 'pushparani' ? this.db.pushparaniBet : cleanId.includes('chicken') ? this.db.chickenRoadRound : this.db.crashBet;
+        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : cleanId.includes('chicken') ? this.db.chickenRoadRound : this.db.crashRound;
 
         const stakesAmountRes = await betModel.aggregate({ _sum: { amount: true } }).catch(() => ({ _sum: { amount: 0 } }));
         const stakesBetAmtRes = await betModel.aggregate({ _sum: { betAmount: true } }).catch(() => ({ _sum: { betAmount: 0 } }));

@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
+import { toValidUserId, DEFAULT_DEMO_UUID } from '../../common/utils/user-id.util.js';
 import { ReferralService } from '../../referral/referral.service.js';
 import { GameOverrideService } from '../game-engine/game-override.service.js';
 import * as crypto from 'crypto';
@@ -61,13 +62,8 @@ export class MinesService {
     return Math.max(1.01, Number(finalMultiplier.toFixed(2)));
   }
 
-  private readonly DEMO_UUID = '00000000-0000-0000-0000-000000000000';
-
   private toValidUserId(userId?: string): string {
-    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      return userId;
-    }
-    return this.DEMO_UUID;
+    return toValidUserId(userId);
   }
 
   private async getOrCreateWallet(userId: string) {
@@ -83,7 +79,7 @@ export class MinesService {
         wallet = await this.db.wallet.upsert({
           where: { userId: activeUserId },
           update: {},
-          create: { userId: activeUserId, mainBalance: activeUserId === this.DEMO_UUID ? 5000.0 : 0.0, bonusBalance: 0.0 },
+          create: { userId: activeUserId, mainBalance: activeUserId === DEFAULT_DEMO_UUID ? 5000.0 : 0.0, bonusBalance: 0.0 },
         });
       } catch (e) {
         // ignore fallback

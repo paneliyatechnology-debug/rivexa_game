@@ -96,6 +96,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get marketOverride(): any { return (this.client as any).marketOverride; }
   get marketConfiguration(): any { return (this.client as any).marketConfiguration; }
   get marketAuditLog(): any { return (this.client as any).marketAuditLog; }
+  // ── Chicken Road models ──────────────────────────────────────────
+  get chickenRoadRound(): any { return (this.client as any).chickenRoadRound; }
+  get chickenRoadCheckpoint(): any { return (this.client as any).chickenRoadCheckpoint; }
+  get chickenRoadAction(): any { return (this.client as any).chickenRoadAction; }
+  get chickenRoadResult(): any { return (this.client as any).chickenRoadResult; }
+  get chickenRoadDifficulty(): any { return (this.client as any).chickenRoadDifficulty; }
+  get chickenRoadTrafficPattern(): any { return (this.client as any).chickenRoadTrafficPattern; }
+  get chickenRoadSettings(): any { return (this.client as any).chickenRoadSettings; }
+  get chickenRoadAuditLog(): any { return (this.client as any).chickenRoadAuditLog; }
   get $transaction(): any { return this.client.$transaction.bind(this.client); }
   get $queryRaw(): any { return this.client.$queryRaw.bind(this.client); }
 }

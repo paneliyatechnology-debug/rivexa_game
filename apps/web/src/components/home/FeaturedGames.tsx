@@ -127,6 +127,15 @@ const GAME_META: Record<
     ctaStyle: 'bg-gradient-to-r from-[#00D9FF] to-[#287BFF] text-[#04101F] font-black',
     glowHex: '#00D9FF',
   },
+  'chicken-road': {
+    svgKey: 'more-games',
+    gradient: 'from-[#2B1B04] via-[#1C1202] to-[#050B20]',
+    border: 'border-[#F59E0B]/45',
+    shadow: 'shadow-[#F59E0B]/15',
+    badgeStyle: 'bg-[#F59E0B] text-slate-950 font-black',
+    ctaStyle: 'bg-gradient-to-r from-[#F59E0B] to-[#10B981] text-slate-950 font-black',
+    glowHex: '#F59E0B',
+  },
 };
 
 const DEFAULT_GAME_META = {
@@ -139,7 +148,7 @@ const DEFAULT_GAME_META = {
   glowHex: '#36BFFF',
 };
 
-const EXTERNAL_GAMES = new Set(['crash', 'jet', 'pushparani', 'coin-flip', 'flipcoin']);
+const EXTERNAL_GAMES = new Set(['crash', 'jet', 'pushparani', 'coin-flip', 'flipcoin', 'chicken-road']);
 
 const GAME_DESC: Record<string, string> = {
   'fast-parity': '30 Seconds',
@@ -153,6 +162,7 @@ const GAME_DESC: Record<string, string> = {
   'coin-flip': 'Win Big',
   pushparani: 'Traditional Game',
   hilo: 'Higher or Lower Card',
+  'chicken-road': 'Road Crossing Multiplier',
 };
 
 interface FeaturedGamesProps {
@@ -161,13 +171,22 @@ interface FeaturedGamesProps {
 }
 
 export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
+  // Deduplicate games by slug to ensure clean rendering
+  const seenSlugs = new Set<string>();
+  const uniqueGames = games.filter((g) => {
+    const slugKey = (g.slug || g.id || '').toLowerCase();
+    if (!slugKey || seenSlugs.has(slugKey)) return false;
+    seenSlugs.add(slugKey);
+    return true;
+  });
+
   const filtered = searchQuery
-    ? games.filter(
+    ? uniqueGames.filter(
         (g) =>
           g.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
           g.slug?.toLowerCase().includes(searchQuery.toLowerCase())
       )
-    : games;
+    : uniqueGames;
 
   return (
     <div id="games" className="space-y-4">

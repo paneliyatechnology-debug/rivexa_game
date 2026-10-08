@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import { ReferralService } from '../../referral/referral.service.js';
 import { GameOverrideService } from '../game-engine/game-override.service.js';
+import { toValidUserId } from '../../common/utils/user-id.util.js';
 import {
   Card,
   CardRank,
@@ -82,10 +83,7 @@ export class HiloService {
   }
 
   private toValidUserId(userId?: string): string {
-    if (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
-      return userId;
-    }
-    return this.DEMO_UUID;
+    return toValidUserId(userId);
   }
 
   public async getGameConfig() {

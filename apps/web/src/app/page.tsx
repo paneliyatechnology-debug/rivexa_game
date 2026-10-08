@@ -25,6 +25,7 @@ const GAMES_FALLBACK = [
   { id: 'pushparani', name: 'Pushparani', slug: 'pushparani', minBet: 10, description: 'Pushpa Truck Crash - Cash out before obstacle hit!', badge: 'NEW' },
   { id: 'coin-flip', name: 'Coin Flip', slug: 'coin-flip', minBet: 10, description: 'Flip coin - heads or tails. Win 1.96x!', badge: '1.96X' },
   { id: 'hilo', name: 'HILO', slug: 'hilo', minBet: 10, description: 'Card prediction: Higher or Lower? Win 2.0x!', badge: 'NEW' },
+  { id: 'chicken-road', name: 'Chicken Road', slug: 'chicken-road', minBet: 10, description: 'Cross multi-lane traffic checkpoints! Win up to 10,000x multipliers!', badge: 'HOT' },
 ];
 
 export default function HomePage() {

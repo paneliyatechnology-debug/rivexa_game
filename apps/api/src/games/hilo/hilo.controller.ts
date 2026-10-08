@@ -24,6 +24,10 @@ export class HiloController {
   }
 
   // ─── CONTINUOUS PLAY SESSION ENDPOINTS ───
+  @Get('config')
+  async getConfig() {
+    return this.hiloService.getGameConfig();
+  }
 
   @Get('preview')
   async getPreview(@Query('card') cardCode?: string) {
@@ -175,6 +179,11 @@ export class GamesHiloController {
       (req.headers['x-user-id'] as string) ||
       '00000000-0000-0000-0000-000000000000'
     );
+  }
+
+  @Get('config')
+  async getConfig() {
+    return this.hiloService.getGameConfig();
   }
 
   @Get('preview')

@@ -80,7 +80,16 @@ export default function NotificationsPage() {
         setNotifications((prev) =>
           prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
         );
-        setUnreadCount((prev) => Math.max(0, prev - 1));
+        setUnreadCount((prev) => {
+          const next = Math.max(0, prev - 1);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('rivexa_unread_notifications', String(next));
+            } catch {}
+            window.dispatchEvent(new CustomEvent('notifications_sync', { detail: { unreadCount: next } }));
+          }
+          return next;
+        });
       }
     } catch (err) {
       // ignore
@@ -104,6 +113,12 @@ export default function NotificationsPage() {
       if (res.ok) {
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         setUnreadCount(0);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('rivexa_unread_notifications', '0');
+          } catch {}
+          window.dispatchEvent(new CustomEvent('notifications_sync', { detail: { unreadCount: 0 } }));
+        }
       }
     } catch (err) {
       // ignore

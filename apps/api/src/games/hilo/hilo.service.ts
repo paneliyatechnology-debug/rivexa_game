@@ -88,19 +88,21 @@ export class HiloService {
     return this.DEMO_UUID;
   }
 
-  private async getGameConfig() {
+  public async getGameConfig() {
     try {
-      const dbGame = await this.db.game.findFirst({ where: { slug: 'hilo' } });
+      const dbGame = await this.db.game.findFirst({
+        where: { slug: 'hilo' },
+      });
       if (dbGame) {
         return {
           minBet: Number(dbGame.minBet || 10),
-          maxBet: Number(dbGame.maxBet || 50000),
+          maxBet: Number(dbGame.maxBet || 500000),
           rtpPercentage: Number(dbGame.rtpPercentage || 96),
           isActive: dbGame.isActive !== false,
         };
       }
     } catch (e) {}
-    return { minBet: 10, maxBet: 50000, rtpPercentage: 96, isActive: true };
+    return { minBet: 10, maxBet: 500000, rtpPercentage: 96, isActive: true };
   }
 
   private async getOrCreateWallet(userId: string) {
@@ -288,13 +290,47 @@ export class HiloService {
         if (winningCards.length > 0) {
           nextCard = winningCards[crypto.randomInt(0, winningCards.length)];
         }
-      } else if (cleanOverride === 'LOSE' || cleanOverride === 'FORCE_LOSE') {
+      } else if (cleanOverride === 'LOSE' || cleanOverride === 'FORCE_LOSE' || cleanOverride === 'LOSS') {
         const losingCards = remainingDeck.filter((c) =>
           choice === 'UP' ? c.rankValue <= currentCard.rankValue : c.rankValue >= currentCard.rankValue
         );
         if (losingCards.length > 0) {
           nextCard = losingCards[crypto.randomInt(0, losingCards.length)];
         }
+      } else if (cleanOverride === 'SAME' || cleanOverride === 'FORCE_SAME') {
+        const sameCards = remainingDeck.filter((c) => c.rankValue === currentCard.rankValue);
+        if (sameCards.length > 0) {
+          nextCard = sameCards[crypto.randomInt(0, sameCards.length)];
+        }
+      } else if (cleanOverride === 'HIGH' || cleanOverride === 'FORCE_HIGH') {
+        const highCards = remainingDeck.filter((c) => c.rankValue >= 10);
+        if (highCards.length > 0) {
+          nextCard = highCards[crypto.randomInt(0, highCards.length)];
+        }
+      } else if (cleanOverride === 'LOW' || cleanOverride === 'FORCE_LOW') {
+        const lowCards = remainingDeck.filter((c) => c.rankValue <= 5);
+        if (lowCards.length > 0) {
+          nextCard = lowCards[crypto.randomInt(0, lowCards.length)];
+        }
+      }
+    } else {
+      // Dynamic Winning Chance (RTP %) algorithm configured by Admin
+      const config = await this.getGameConfig();
+      const rtp = config.rtpPercentage;
+      const winProbability = Math.max(0.01, Math.min(0.99, rtp / 100));
+      const roll = Math.random();
+
+      const winningCards = remainingDeck.filter((c) =>
+        choice === 'UP' ? c.rankValue > currentCard.rankValue : c.rankValue < currentCard.rankValue
+      );
+      const losingCards = remainingDeck.filter((c) =>
+        choice === 'UP' ? c.rankValue <= currentCard.rankValue : c.rankValue >= currentCard.rankValue
+      );
+
+      if (roll < winProbability && winningCards.length > 0) {
+        nextCard = winningCards[crypto.randomInt(0, winningCards.length)];
+      } else if (losingCards.length > 0) {
+        nextCard = losingCards[crypto.randomInt(0, losingCards.length)];
       }
     }
 
@@ -619,7 +655,7 @@ export class HiloService {
   /**
    * Get preview card and baseline multipliers for initial game view before bet
    */
-  public getInitialPreview(cardCode?: string) {
+  public async getInitialPreview(cardCode?: string) {
     let currentCard: Card;
     if (cardCode) {
       currentCard = this.parseCard(cardCode);
@@ -630,6 +666,7 @@ export class HiloService {
     const fullDeck = this.generateDeck();
     const remainingDeck = fullDeck.filter((c) => c.code !== currentCard.code);
     const mults = this.calculateMultipliers(currentCard.rankValue, remainingDeck);
+    const config = await this.getGameConfig();
 
     return {
       currentCard,
@@ -643,6 +680,7 @@ export class HiloService {
       lowerCount: mults.lowerCount,
       sameCount: mults.sameCount,
       remainingCardsCount: remainingDeck.length,
+      config,
     };
   }
 
@@ -751,8 +789,10 @@ export class HiloService {
     const currentCard = this.parseCard(session.currentCard);
     const remainingDeck = (session.remainingDeck as Card[]) || [];
     const mults = this.calculateMultipliers(currentCard.rankValue, remainingDeck);
+    const config = await this.getGameConfig();
 
     return {
+      config,
       session: {
         sessionId: session.sessionId,
         originalBet: Number(session.originalBet),
@@ -1084,7 +1124,7 @@ export class HiloService {
           if (winningCards.length > 0) {
             nextCard = winningCards[crypto.randomInt(0, winningCards.length)];
           }
-        } else if (clean === 'LOSE' || clean === 'FORCE_LOSE') {
+        } else if (clean === 'LOSE' || clean === 'FORCE_LOSE' || clean === 'LOSS') {
           const losingCards = remainingDeck.filter((c) =>
             choice === 'UP'
               ? c.rankValue <= currentCard.rankValue
@@ -1095,6 +1135,48 @@ export class HiloService {
           if (losingCards.length > 0) {
             nextCard = losingCards[crypto.randomInt(0, losingCards.length)];
           }
+        } else if (clean === 'SAME' || clean === 'FORCE_SAME') {
+          const sameCards = remainingDeck.filter((c) => c.rankValue === currentCard.rankValue);
+          if (sameCards.length > 0) {
+            nextCard = sameCards[crypto.randomInt(0, sameCards.length)];
+          }
+        } else if (clean === 'HIGH' || clean === 'FORCE_HIGH') {
+          const highCards = remainingDeck.filter((c) => c.rankValue >= 10);
+          if (highCards.length > 0) {
+            nextCard = highCards[crypto.randomInt(0, highCards.length)];
+          }
+        } else if (clean === 'LOW' || clean === 'FORCE_LOW') {
+          const lowCards = remainingDeck.filter((c) => c.rankValue <= 5);
+          if (lowCards.length > 0) {
+            nextCard = lowCards[crypto.randomInt(0, lowCards.length)];
+          }
+        }
+      } else {
+        // Dynamic Winning Chance (RTP %) algorithm configured by Admin
+        const config = await this.getGameConfig();
+        const rtp = config.rtpPercentage;
+        const winProbability = Math.max(0.01, Math.min(0.99, rtp / 100));
+        const roll = Math.random();
+
+        const winningCards = remainingDeck.filter((c) =>
+          choice === 'UP'
+            ? c.rankValue > currentCard.rankValue
+            : choice === 'DOWN'
+            ? c.rankValue < currentCard.rankValue
+            : c.rankValue === currentCard.rankValue,
+        );
+        const losingCards = remainingDeck.filter((c) =>
+          choice === 'UP'
+            ? c.rankValue <= currentCard.rankValue
+            : choice === 'DOWN'
+            ? c.rankValue >= currentCard.rankValue
+            : c.rankValue !== currentCard.rankValue,
+        );
+
+        if (roll < winProbability && winningCards.length > 0) {
+          nextCard = winningCards[crypto.randomInt(0, winningCards.length)];
+        } else if (losingCards.length > 0) {
+          nextCard = losingCards[crypto.randomInt(0, losingCards.length)];
         }
       }
 

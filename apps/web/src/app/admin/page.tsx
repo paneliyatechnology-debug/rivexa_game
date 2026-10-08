@@ -47,6 +47,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     if (s.includes('dice')) return 'dice';
     if (s.includes('pushpa')) return 'pushparani';
     if (s.includes('coin')) return 'coin-flip';
+    if (s.includes('hilo')) return 'hilo';
     if (s.includes('approval') || s.includes('bank')) return 'approvals';
     if (s.includes('merchant')) return 'merchants';
     if (s.includes('deposit') || s.includes('manual')) return 'manual-deposits';
@@ -236,6 +237,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     { id: 'dice', name: 'Dice Roll', rtpPercentage: 98, minBet: 10, maxBet: 100000, isActive: true },
     { id: 'pushparani', name: 'Pushparani Truck Express', rtpPercentage: 95, minBet: 10, maxBet: 100000, isActive: true },
     { id: 'coin-flip', name: 'RIVEXA 3D Coin Flip', rtpPercentage: 96, minBet: 10, maxBet: 50000, isActive: true },
+    { id: 'hilo', name: 'HILO Card Prediction', rtpPercentage: 96, minBet: 10, maxBet: 500000, isActive: true },
   ]);
 
   // Game Override Form State
@@ -249,6 +251,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     'andar-bahar': 'ANDAR',
     'pushparani': '3.20',
     'coin-flip': 'FORCE_WIN',
+    'hilo': 'FORCE_WIN',
   });
 
   const [editingRtp, setEditingRtp] = useState<{ [key: string]: number }>({});
@@ -312,6 +315,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     { id: 'andar-bahar', name: 'Andar Bahar', icon: '♠️' },
     { id: 'pushparani', name: 'Pushparani', icon: '🚚' },
     { id: 'coin-flip', name: 'Coin Flip', icon: '🪙' },
+    { id: 'hilo', name: 'HILO Card Prediction', icon: '🃏' },
     { id: 'sports', name: 'Sports Live & Betting', icon: '🏆' },
   ];
 
@@ -342,7 +346,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     superAdminPassword: '',
     superAdminPhone: '',
     initialCredit: 100000,
-    allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'sports'],
+    allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'hilo', 'sports'],
   });
 
   const [isManageGamesModalOpen, setIsManageGamesModalOpen] = useState<boolean>(false);
@@ -407,7 +411,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
         superAdminPassword: '',
         superAdminPhone: '',
         initialCredit: 100000,
-        allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'sports'],
+        allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'hilo', 'sports'],
       });
       fetchTenants();
     } catch (err: any) {
@@ -1612,6 +1616,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                     'dice': '🎲',
                     'pushparani': '🚚',
                     'coin-flip': '🪙',
+                    'hilo': '🃏',
                   };
                   return (
                     <button
@@ -5158,7 +5163,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
           })()}
 
           {/* DEDICATED GAME CONTROL CENTER VIEWS */}
-          {['fast-parity', 'parity', 'mines', 'andar-bahar', 'jet', 'crash', 'spin', 'dice', 'pushparani', 'coin-flip', 'coinflip'].includes(activeTab) && (() => {
+          {['fast-parity', 'parity', 'mines', 'andar-bahar', 'jet', 'crash', 'spin', 'dice', 'pushparani', 'coin-flip', 'coinflip', 'hilo'].includes(activeTab) && (() => {
             const gameInfoMap: { [key: string]: { name: string; type: any; icon: string; subtitle: string; rtp: number; minBet: number; maxBet: number } } = {
               'fast-parity': { name: 'Fast Parity (30s) Control Center', type: 'fast-parity', icon: '⚡', subtitle: 'Manage Fast Parity (30s) winning chances (RTP %), house edge, min/max limits & manual period overrides', rtp: 95.0, minBet: 10, maxBet: 50000 },
               'parity': { name: 'Parity (1-Min) Control Center', type: 'parity', icon: '⏱️', subtitle: 'Manage Parity (1-Min / 60s) winning chances (RTP %), house edge, min/max limits & manual period overrides', rtp: 96.0, minBet: 10, maxBet: 100000 },
@@ -5171,10 +5176,11 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
               'pushparani': { name: 'Pushparani Truck Express Control Center', type: 'pushparani', icon: '🚚', subtitle: 'Independent Pushparani Truck Express engine monitoring & manual control', rtp: 95.0, minBet: 10, maxBet: 100000 },
               'coin-flip': { name: 'RIVEXA 3D Coin Flip Control Center', type: 'coin-flip', icon: '🪙', subtitle: 'Manage Coin Flip winning chances (RTP %), house edge, win probability out of 5 flips, min/max limits & manual outcome overrides', rtp: 96.0, minBet: 10, maxBet: 50000 },
               'coinflip': { name: 'RIVEXA 3D Coin Flip Control Center', type: 'coin-flip', icon: '🪙', subtitle: 'Manage Coin Flip winning chances (RTP %), house edge, win probability out of 5 flips, min/max limits & manual outcome overrides', rtp: 96.0, minBet: 10, maxBet: 50000 },
+              'hilo': { name: 'HILO Card Prediction Control Center', type: 'hilo', icon: '🃏', subtitle: 'Manage HILO winning chances (RTP %), house edge, min/max limits & manual card prediction overrides', rtp: 96.0, minBet: 10, maxBet: 500000 },
             };
             const info = gameInfoMap[activeTab];
             if (!info) return null;
-            const gameObj = games.find((g) => g.id === activeTab);
+            const gameObj = games.find((g) => g.id === activeTab || g.slug === activeTab);
             return (
               <GameControlCenterView
                 gameId={activeTab}

@@ -943,7 +943,7 @@ export class AdminService {
       name: 'HILO',
       slug: 'hilo',
       minBet: 10,
-      maxBet: 50000,
+      maxBet: 500000,
       description: 'Predict higher or lower cards and win 2.0x multiplier!',
       badge: '2.0X',
       badgeClass: 'bg-gradient-to-r from-cyan-400 to-blue-600 text-slate-950 font-black',
@@ -1365,6 +1365,18 @@ export class AdminService {
         };
       }
 
+      if (gameId === 'hilo') {
+        const target = overrideVal.toUpperCase();
+        return {
+          number: target,
+          color: target.includes('WIN') ? 'GREEN' : target.includes('LOSE') ? 'RED' : 'BLUE',
+          multiplier: '2.00',
+          isOverride: true,
+          overrideVal: target,
+          label: `FORCED TARGET (${target})`,
+        };
+      }
+
       forcedNum = parseInt(overrideVal, 10);
       if (isNaN(forcedNum)) {
         if (overrideVal.toLowerCase() === 'green') forcedNum = 7;
@@ -1656,8 +1668,8 @@ export class AdminService {
       } catch (e) {}
     }
 
-    // Fallback if DB table has fewer records and not mines
-    if (settledPeriods.length < 5 && cleanId !== 'mines') {
+    // Fallback if DB table has fewer records and not games with independent session models
+    if (settledPeriods.length < 5 && cleanId !== 'mines' && cleanId !== 'hilo' && cleanId !== 'coin-flip' && cleanId !== 'flipcoin') {
       const sampleCount = 10;
       settledPeriods = [];
 
@@ -1998,6 +2010,268 @@ export class AdminService {
       };
     }
 
+    if (cleanId === 'hilo') {
+      let hiloTodayStakes = 0;
+      let hiloTodayPayouts = 0;
+      let upPool = 0;
+      let downPool = 0;
+      let samePool = 0;
+      let openCard = '8♠';
+
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      // Session activity cutoff: Consider sessions active in the last 60 seconds as currently playing live
+      const activeTimeCutoff = new Date(Date.now() - 60 * 1000);
+      let activePlayersCount = 0;
+
+      try {
+        // 1. TODAY'S REAL STAKES & PAYOUTS AGGREGATION (Filtered strictly from startOfToday)
+        const [
+          roundStakesToday,
+          roundPayoutsToday,
+          sessionStakesToday,
+          sessionPayoutsToday,
+        ] = await Promise.all([
+          this.db.hiloRound.aggregate({
+            where: { createdAt: { gte: startOfToday } },
+            _sum: { betAmount: true },
+          }),
+          this.db.hiloRound.aggregate({
+            where: { createdAt: { gte: startOfToday } },
+            _sum: { payout: true },
+          }),
+          this.db.hiloSession.aggregate({
+            where: {
+              createdAt: { gte: startOfToday },
+              status: { not: 'READY' },
+            },
+            _sum: { originalBet: true },
+          }),
+          this.db.hiloSession.aggregate({
+            where: {
+              createdAt: { gte: startOfToday },
+              status: 'CASHED_OUT',
+            },
+            _sum: { currentCashoutAmount: true },
+          }),
+        ]);
+
+        hiloTodayStakes = Number(roundStakesToday._sum.betAmount || 0) + Number(sessionStakesToday._sum.originalBet || 0);
+        hiloTodayPayouts = Number(roundPayoutsToday._sum.payout || 0) + Number(sessionPayoutsToday._sum.currentCashoutAmount || 0);
+
+        // 2. LIVE ACTIVE SESSIONS & PENDING BETS (Users actually playing right now!)
+        const [activeSessions, pendingRounds] = await Promise.all([
+          this.db.hiloSession.findMany({
+            where: {
+              status: 'ACTIVE',
+              updatedAt: { gte: activeTimeCutoff },
+            },
+            include: {
+              user: { select: { email: true, phone: true } },
+              plays: { orderBy: { createdAt: 'desc' }, take: 1 },
+            },
+            orderBy: { updatedAt: 'desc' },
+          }),
+          this.db.hiloRound.findMany({
+            where: {
+              status: 'PENDING',
+              createdAt: { gte: activeTimeCutoff },
+            },
+            include: { user: { select: { email: true, phone: true } } },
+            orderBy: { createdAt: 'desc' },
+          }),
+        ]);
+
+        const activeUserIds = new Set<string>();
+        activeSessions.forEach((s: any) => activeUserIds.add(s.userId));
+        pendingRounds.forEach((r: any) => activeUserIds.add(r.userId));
+        activePlayersCount = activeUserIds.size;
+
+        if (activeSessions.length > 0 && activeSessions[0].currentCard) {
+          openCard = activeSessions[0].currentCard;
+        }
+
+        // Map live active bets into activeBetsList & pools
+        const sessionActiveBets = activeSessions.map((s: any) => {
+          const amt = Number(s.originalBet);
+          const mult = Number(s.currentMultiplier || 1.0);
+          const potWin = Number(s.currentCashoutAmount) > 0 ? Number(s.currentCashoutAmount) : amt * 2.0;
+          const lastPlay = s.plays?.[0];
+          const choice = (lastPlay?.choice || 'UP').toUpperCase();
+
+          if (choice === 'UP' || choice === 'HIGHER') upPool += amt;
+          else if (choice === 'DOWN' || choice === 'LOWER') downPool += amt;
+          else samePool += amt;
+
+          return {
+            id: s.id,
+            userEmail: s.user?.email || s.user?.phone || 'Rivexa Player',
+            choice,
+            option: `${choice} (${mult.toFixed(2)}x)`,
+            currentCard: s.currentCard,
+            amount: amt,
+            betAmount: amt,
+            multiplier: mult,
+            potentialWin: potWin,
+            status: 'PLAYING',
+            time: new Date(s.updatedAt || s.createdAt).toTimeString().split(' ')[0],
+          };
+        });
+
+        const roundActiveBets = pendingRounds.map((r: any) => {
+          const amt = Number(r.betAmount);
+          const choice = (r.playerChoice || 'UP').toUpperCase();
+
+          if (choice === 'UP' || choice === 'HIGHER') upPool += amt;
+          else if (choice === 'DOWN' || choice === 'LOWER') downPool += amt;
+          else samePool += amt;
+
+          return {
+            id: r.id,
+            userEmail: r.user?.email || r.user?.phone || 'Rivexa Player',
+            choice,
+            option: choice,
+            currentCard: r.currentCard,
+            amount: amt,
+            betAmount: amt,
+            multiplier: 2.0,
+            potentialWin: amt * 2.0,
+            status: 'PENDING',
+            time: new Date(r.createdAt).toTimeString().split(' ')[0],
+          };
+        });
+
+        activeBetsList = [...sessionActiveBets, ...roundActiveBets];
+
+        // 3. SETTLED ROUNDS HISTORY (Real completed games from both single rounds & continuous sessions)
+        const [recentRounds, recentSessions] = await Promise.all([
+          this.db.hiloRound.findMany({
+            where: { status: 'COMPLETED' },
+            orderBy: { createdAt: 'desc' },
+            take: 25,
+            include: { user: { select: { email: true, phone: true } } },
+          }),
+          this.db.hiloSession.findMany({
+            where: { status: { in: ['CASHED_OUT', 'LOST'] } },
+            orderBy: { updatedAt: 'desc' },
+            take: 25,
+            include: {
+              user: { select: { email: true, phone: true } },
+              plays: { orderBy: { createdAt: 'desc' }, take: 1 },
+            },
+          }),
+        ]);
+
+        const mappedRounds = recentRounds.map((r: any) => {
+          const rTime = new Date(r.createdAt);
+          const timeStr = rTime.toTimeString().split(' ')[0] + `, ${rTime.toLocaleString('en-US', { month: 'short' })} ${rTime.getDate()}`;
+          return {
+            id: r.id,
+            period: `#${r.roundId || r.id.slice(0, 8).toUpperCase()}`,
+            userEmail: r.user?.email || r.user?.phone || 'Rivexa Player',
+            choice: r.playerChoice || 'UP',
+            currentCard: r.currentCard,
+            nextCard: r.nextCard || '?',
+            winningNumber: `${r.currentCard} → ${r.nextCard || '?'}`,
+            betAmount: Number(r.betAmount),
+            payoutAmount: Number(r.payout || 0),
+            profit: Number(r.profit || 0),
+            result: r.result,
+            status: r.status,
+            override: activeOverride ? `FORCED (${activeOverride})` : 'AUTO RTP',
+            time: timeStr,
+            timestamp: rTime.getTime(),
+          };
+        });
+
+        const mappedSessions = recentSessions.map((s: any) => {
+          const sTime = new Date(s.endedAt || s.createdAt);
+          const timeStr = sTime.toTimeString().split(' ')[0] + `, ${sTime.toLocaleString('en-US', { month: 'short' })} ${sTime.getDate()}`;
+          const isWin = s.status === 'CASHED_OUT';
+          const lastPlay = s.plays?.[0];
+          const choice = lastPlay?.choice || (isWin ? 'CASHOUT' : 'DOWN');
+          const prevCard = lastPlay?.previousCard || s.currentCard;
+          const nextCard = lastPlay?.nextCard || s.currentCard;
+          const originalBet = Number(s.originalBet);
+          const payoutAmount = isWin ? Number(s.currentCashoutAmount) : 0;
+          const profit = payoutAmount - originalBet;
+
+          return {
+            id: s.id,
+            period: `#${s.sessionId || s.id.slice(0, 8).toUpperCase()}`,
+            userEmail: s.user?.email || s.user?.phone || 'Rivexa Player',
+            choice,
+            currentCard: prevCard,
+            nextCard,
+            winningNumber: `${prevCard} → ${nextCard}`,
+            betAmount: originalBet,
+            payoutAmount,
+            profit,
+            result: isWin ? 'WIN' : 'LOSS',
+            status: s.status,
+            override: activeOverride ? `FORCED (${activeOverride})` : 'AUTO RTP',
+            time: timeStr,
+            timestamp: sTime.getTime(),
+          };
+        });
+
+        settledPeriods = [...mappedRounds, ...mappedSessions]
+          .sort((a, b) => b.timestamp - a.timestamp)
+          .slice(0, 30);
+
+        if (!openCard || openCard === '8♠') {
+          if (settledPeriods.length > 0 && settledPeriods[0].currentCard) {
+            openCard = settledPeriods[0].currentCard;
+          }
+        }
+      } catch (e: any) {
+        console.error('HILO CONTROL CENTER ERROR:', e?.message || e);
+      }
+
+      const totalStakedLive = activeBetsList.reduce((acc, b) => acc + (b.amount || b.betAmount || 0), 0);
+      const houseNetProfit = hiloTodayStakes - hiloTodayPayouts;
+
+      return {
+        gameId: cleanId,
+        gameName: game.name,
+        rtpPercentage: Number(game.rtpPercentage),
+        minBet: Number(game.minBet),
+        maxBet: Number(game.maxBet),
+        isActive: game.isActive !== false,
+        todayStakes: hiloTodayStakes,
+        todayPayouts: hiloTodayPayouts,
+        houseNetProfit,
+        activeRtp: Number(game.rtpPercentage),
+        activePlayers: activePlayersCount,
+        currentRound: {
+          periodNumber: activeBetsList.length > 0 ? (activeBetsList[0] as any).period || '#HILO_LIVE_ACTIVE' : '#HILO_LIVE_ENGINE',
+          status: activePlayersCount > 0 ? `LIVE GAME IN PROGRESS (${activePlayersCount} Active Bettor${activePlayersCount > 1 ? 's' : ''})` : 'LIVE CARD PREDICTION ENGINE READY',
+          openCard,
+          activeOverride: activeOverride ? `FORCED TARGET ACTIVE: ${activeOverride}` : 'AUTOMATIC RTP ALGORITHM ACTIVE',
+          projectedNumber: activeOverride || 'AUTO RTP (PROVABLY FAIR)',
+          projectedColor: 'HILO',
+          projectedLabel: activeOverride ? `MANUAL OVERRIDE (${activeOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          activeBetsSummary: {
+            up: upPool,
+            down: downPool,
+            same: samePool,
+            totalStaked: totalStakedLive,
+            totalBetsCount: activeBetsList.length,
+          },
+          activeBetsList,
+        },
+        nextRound: {
+          periodNumber: '#NEXT_HILO_CARD',
+          projectedNumber: activeOverride || 'AUTO PREDICTION',
+          projectedColor: 'HILO',
+          projectedLabel: activeOverride ? `MANUAL OVERRIDE (${activeOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          isOverride: !!activeOverride,
+        },
+        nextOverride: activeOverride || '',
+        settledPeriods,
+      };
+    }
 
     if (cleanId === 'andar-bahar') {
       let abTotalStakes = 0;
@@ -2415,6 +2689,66 @@ export class AdminService {
       nextOverride: activeOverride || '',
       settledPeriods,
     };
+  }
+
+  async resetGameHistory(gameId: string) {
+    const cleanId = (gameId || '').toLowerCase().trim();
+    if (cleanId === 'hilo') {
+      try {
+        await this.db.hiloPlay.deleteMany({});
+        await this.db.hiloSession.deleteMany({});
+        await this.db.hiloBet.deleteMany({});
+        await this.db.hiloRound.deleteMany({});
+      } catch (err: any) {
+        console.error('Error resetting HILO history:', err?.message || err);
+        return { success: false, message: `Failed to reset HILO history: ${err?.message || err}` };
+      }
+      return {
+        success: true,
+        message: 'All HILO bet history, rounds, sessions, and revenue have been reset to ₹0.00.',
+      };
+    } else if (cleanId === 'all') {
+      try {
+        await this.db.hiloPlay.deleteMany({}).catch(() => {});
+        await this.db.hiloSession.deleteMany({}).catch(() => {});
+        await this.db.hiloBet.deleteMany({}).catch(() => {});
+        await this.db.hiloRound.deleteMany({}).catch(() => {});
+        await this.db.minesGame.deleteMany({}).catch(() => {});
+        await this.db.spinBet.deleteMany({}).catch(() => {});
+        await this.db.diceBet.deleteMany({}).catch(() => {});
+        await this.db.coinFlipBet.deleteMany({}).catch(() => {});
+        await this.db.crashBet.deleteMany({}).catch(() => {});
+        await this.db.crashRound.deleteMany({}).catch(() => {});
+        await this.db.parityBet.deleteMany({}).catch(() => {});
+      } catch (err: any) {
+        console.error('Error resetting all games history:', err?.message || err);
+      }
+      return {
+        success: true,
+        message: 'All game bet histories and revenues have been reset to 0.',
+      };
+    } else if (cleanId === 'mines') {
+      await this.db.minesGame.deleteMany({});
+      return { success: true, message: 'Mines game history has been reset to 0.' };
+    } else if (cleanId === 'spin') {
+      await this.db.spinBet.deleteMany({});
+      return { success: true, message: 'Spin bet history has been reset to 0.' };
+    } else if (cleanId === 'dice' || cleanId === 'overunder-dice') {
+      await this.db.diceBet.deleteMany({});
+      return { success: true, message: 'Dice bet history has been reset to 0.' };
+    } else if (cleanId === 'coin-flip' || cleanId === 'flipcoin') {
+      await this.db.coinFlipBet.deleteMany({});
+      return { success: true, message: 'Coin flip bet history has been reset to 0.' };
+    } else if (cleanId === 'crash') {
+      await this.db.crashBet.deleteMany({});
+      await this.db.crashRound.deleteMany({});
+      return { success: true, message: 'Crash bet history has been reset to 0.' };
+    } else if (cleanId === 'fast-parity' || cleanId === 'parity') {
+      await this.db.parityBet.deleteMany({});
+      return { success: true, message: 'Parity bet history has been reset to 0.' };
+    }
+
+    return { success: false, message: `Unsupported game ID: ${cleanId}` };
   }
 }
 

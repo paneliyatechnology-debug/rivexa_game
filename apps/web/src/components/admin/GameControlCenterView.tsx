@@ -6,7 +6,7 @@ import { getApiBaseUrl } from '@/lib/config';
 interface GameControlCenterViewProps {
   gameId: string;
   gameName: string;
-  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip';
+  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip' | 'hilo';
   icon: string;
   subtitle: string;
   defaultRtp?: number;
@@ -40,6 +40,7 @@ export function GameControlCenterView({
 
   const isEditingRtpRef = React.useRef<boolean>(false);
   const isEditingLimitsRef = React.useRef<boolean>(false);
+  const hasLoadedFromApiRef = React.useRef<boolean>(false);
 
   const [gameEnabled, setGameEnabled] = useState<boolean>(isActive);
   const [targetOverride, setTargetOverride] = useState<string>('');
@@ -88,13 +89,15 @@ export function GameControlCenterView({
   });
 
   // Settled History Mock / Live Data
-  const [settledPeriods, setSettledPeriods] = useState<any[]>([
-    { period: '#202609257106', winningNumber: 9, colors: 'GREEN', override: 'AUTO RTP', time: '05:13:00, Sep 25' },
-    { period: '#202609257105', winningNumber: 2, colors: 'RED', override: 'AUTO RTP', time: '05:12:30, Sep 25' },
-    { period: '#202609257104', winningNumber: 5, colors: 'VIOLET/GREEN', override: 'AUTO RTP', time: '05:12:00, Sep 25' },
-    { period: '#202609257103', winningNumber: 0, colors: 'VIOLET/RED', override: 'AUTO RTP', time: '05:11:30, Sep 25' },
-    { period: '#202609257102', winningNumber: 7, colors: 'GREEN', override: 'AUTO RTP', time: '05:11:00, Sep 25' },
-  ]);
+  const [settledPeriods, setSettledPeriods] = useState<any[]>(() => {
+    return gameType === 'hilo' || gameType === 'dice' ? [] : [
+      { period: '#202609257106', winningNumber: 9, colors: 'GREEN', override: 'AUTO RTP', time: '05:13:00, Sep 25' },
+      { period: '#202609257105', winningNumber: 2, colors: 'RED', override: 'AUTO RTP', time: '05:12:30, Sep 25' },
+      { period: '#202609257104', winningNumber: 5, colors: 'VIOLET/GREEN', override: 'AUTO RTP', time: '05:12:00, Sep 25' },
+      { period: '#202609257103', winningNumber: 0, colors: 'VIOLET/RED', override: 'AUTO RTP', time: '05:11:30, Sep 25' },
+      { period: '#202609257102', winningNumber: 7, colors: 'GREEN', override: 'AUTO RTP', time: '05:11:00, Sep 25' },
+    ];
+  });
 
   const [minesPlayed, setMinesPlayed] = useState<any[]>([
     { user: 'Jatin Kakadiya', amount: 100.00, status: 'PLAYING', multiplier: 1.00, payout: 0.00, time: '13:39:28, Sep 17' },
@@ -118,16 +121,17 @@ export function GameControlCenterView({
       if (res.ok) {
         const data = await res.json();
         if (data) {
+          hasLoadedFromApiRef.current = true;
           if (data.rtpPercentage !== undefined) {
-            setRtp(data.rtpPercentage);
+            setRtp(Number(data.rtpPercentage));
             if (!isEditingRtpRef.current) setRtpInput(String(data.rtpPercentage));
           }
           if (data.minBet !== undefined) {
-            setMinBet(data.minBet);
+            setMinBet(Number(data.minBet));
             if (!isEditingLimitsRef.current) setMinBetInput(String(data.minBet));
           }
           if (data.maxBet !== undefined) {
-            setMaxBet(data.maxBet);
+            setMaxBet(Number(data.maxBet));
             if (!isEditingLimitsRef.current) setMaxBetInput(String(data.maxBet));
           }
           if (data.isActive !== undefined) setGameEnabled(data.isActive);
@@ -154,17 +158,29 @@ export function GameControlCenterView({
             setNextRoundInfo(data.nextRound);
           }
 
-          if (Array.isArray(data.settledPeriods) && data.settledPeriods.length > 0) {
-            if (gameType === 'andar-bahar' && data.settledPeriods[0]?.openCard) {
-              setAndarBaharHistory(data.settledPeriods);
-            } else if (gameType === 'mines' && (data.settledPeriods[0]?.multiplier !== undefined || data.settledPeriods[0]?.amount !== undefined)) {
-              setMinesPlayed(data.settledPeriods);
-            } else if (gameType === 'dice' && data.settledPeriods[0]?.rolledNumber !== undefined) {
-              setDiceHistory(data.settledPeriods);
-            } else if (gameType === 'dice') {
-              setDiceHistory(data.settledPeriods);
+          if (Array.isArray(data.settledPeriods)) {
+            if (data.settledPeriods.length > 0) {
+              if (gameType === 'andar-bahar' && data.settledPeriods[0]?.openCard) {
+                setAndarBaharHistory(data.settledPeriods);
+              } else if (gameType === 'mines' && (data.settledPeriods[0]?.multiplier !== undefined || data.settledPeriods[0]?.amount !== undefined)) {
+                setMinesPlayed(data.settledPeriods);
+              } else if (gameType === 'dice') {
+                setDiceHistory(data.settledPeriods);
+              } else {
+                setSettledPeriods(data.settledPeriods);
+              }
             } else {
-              setSettledPeriods(data.settledPeriods);
+              if (gameType === 'hilo') {
+                setSettledPeriods([]);
+              } else if (gameType === 'dice') {
+                setDiceHistory([]);
+              } else if (gameType === 'mines') {
+                setMinesPlayed([]);
+              } else if (gameType === 'andar-bahar') {
+                setAndarBaharHistory([]);
+              } else {
+                setSettledPeriods([]);
+              }
             }
           }
         }
@@ -175,6 +191,11 @@ export function GameControlCenterView({
   }, [gameId, gameType, defaultRtp]);
 
   React.useEffect(() => {
+    hasLoadedFromApiRef.current = false;
+  }, [gameId]);
+
+  React.useEffect(() => {
+    if (hasLoadedFromApiRef.current) return;
     if (!isEditingRtpRef.current) {
       setRtp(defaultRtp);
       setRtpInput(String(defaultRtp));
@@ -336,10 +357,16 @@ export function GameControlCenterView({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ result: target }),
       });
-      setMessage(`🎯 Next multiplier target set to: ${target}x`);
+      setMessage(
+        gameType === 'hilo'
+          ? `🎯 Next HILO forced outcome set to: ${target}`
+          : gameType === 'coin-flip'
+          ? `🎯 Next coin flip forced outcome set to: ${target}`
+          : `🎯 Next multiplier target set to: ${target}x`
+      );
       fetchLiveControlData();
     } catch (e) {
-      setMessage(`🎯 Next multiplier target set to: ${target}x`);
+      setMessage(`🎯 Next target set to: ${target}`);
     }
   };
 
@@ -377,6 +404,31 @@ export function GameControlCenterView({
     }
   };
 
+  const [isResettingHistory, setIsResettingHistory] = useState(false);
+  const handleResetGameHistory = async () => {
+    if (!window.confirm(`⚠️ Reset Bet History & Revenue for ${gameName}?\n\nThis will clear all previous bet records, sessions, turnover, and set revenue back to ₹0.00.`)) {
+      return;
+    }
+    setIsResettingHistory(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/admin/games/${gameId}/reset-history`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setMessage('✅ ' + (data.message || 'All bet history and revenue have been successfully reset to ₹0.00!'));
+        await fetchLiveControlData();
+      } else {
+        setMessage('⚠️ ' + (data?.message || 'Failed to reset bet history.'));
+      }
+    } catch (e: any) {
+      setMessage('⚠️ Error: ' + (e?.message || e));
+    } finally {
+      setIsResettingHistory(false);
+    }
+  };
+
   const houseMargin = (100 - rtp).toFixed(1);
 
   return (
@@ -394,6 +446,15 @@ export function GameControlCenterView({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleResetGameHistory}
+            disabled={isResettingHistory}
+            className="px-3.5 py-2 rounded-xl text-xs font-black tracking-wide flex items-center gap-1.5 transition-all bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 cursor-pointer shadow-xs disabled:opacity-50"
+            title="Reset all bets, turnover, and revenue to ₹0.00"
+          >
+            <span>🗑️</span>
+            <span>{isResettingHistory ? 'RESETTING...' : 'RESET TO ₹0'}</span>
+          </button>
           <button
             onClick={handleToggleEnable}
             className={`px-3.5 py-2 rounded-xl text-xs font-black tracking-wide flex items-center gap-1.5 transition-all shadow-md cursor-pointer ${
@@ -436,7 +497,9 @@ export function GameControlCenterView({
 
         <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
           <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">HOUSE NET PROFIT</span>
-          <div className="text-2xl font-black text-emerald-600 mt-1">₹{Number(liveStats?.houseNetProfit || 0).toFixed(2)}</div>
+          <div className={`text-2xl font-black mt-1 ${Number(liveStats?.houseNetProfit || 0) < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+            ₹{Number(liveStats?.houseNetProfit || 0).toFixed(2)}
+          </div>
           <span className="text-[10px] font-bold text-slate-400">House Margin: {houseMargin}%</span>
         </div>
 
@@ -714,6 +777,29 @@ export function GameControlCenterView({
                   </span>
                 </div>
               </div>
+            ) : gameType === 'hilo' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-emerald-800 uppercase block">HIGHER (UP) POOL</span>
+                  <span className="text-base font-black text-emerald-600 block mt-0.5">
+                    ₹{Number((currentRoundInfo as any).activeBetsSummary?.up || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-rose-800 uppercase block">LOWER (DOWN) POOL</span>
+                  <span className="text-base font-black text-rose-600 block mt-0.5">
+                    ₹{Number((currentRoundInfo as any).activeBetsSummary?.down || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-amber-800 uppercase block">SAME RANK / DRAW POOL</span>
+                  <span className="text-base font-black text-amber-600 block mt-0.5">
+                    ₹{Number((currentRoundInfo as any).activeBetsSummary?.same || 0).toFixed(2)}
+                  </span>
+                </div>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
@@ -765,6 +851,17 @@ export function GameControlCenterView({
                           <th className="py-2.5 px-4">Payout Won</th>
                           <th className="py-2.5 px-4">Time</th>
                         </tr>
+                      ) : gameType === 'hilo' ? (
+                        <tr>
+                          <th className="py-2.5 px-4">Player</th>
+                          <th className="py-2.5 px-4">Prediction Choice</th>
+                          <th className="py-2.5 px-4">Table Card</th>
+                          <th className="py-2.5 px-4">Staked Bet</th>
+                          <th className="py-2.5 px-4">Current Multiplier</th>
+                          <th className="py-2.5 px-4">Potential Win</th>
+                          <th className="py-2.5 px-4">Status</th>
+                          <th className="py-2.5 px-4">Time</th>
+                        </tr>
                       ) : (
                         <tr>
                           <th className="py-2.5 px-4">Player</th>
@@ -806,6 +903,36 @@ export function GameControlCenterView({
                             </td>
                             <td className="py-2.5 px-4 font-mono text-slate-500 text-[11px]">{bet.time || 'Live'}</td>
                           </tr>
+                        ) : gameType === 'hilo' ? (
+                          <tr key={bet.id || Math.random()} className="hover:bg-slate-50/80">
+                            <td className="py-2.5 px-4 font-bold text-slate-900">{bet.userEmail || bet.username || 'Player'}</td>
+                            <td className="py-2.5 px-4">
+                              <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                bet.choice === 'UP' || bet.choice === 'HIGHER' ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                                bet.choice === 'DOWN' || bet.choice === 'LOWER' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                bet.choice === 'SAME' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                'bg-blue-100 text-blue-800 border border-blue-200'
+                              }`}>
+                                {bet.choice === 'UP' || bet.choice === 'HIGHER' ? '↑ HIGHER' :
+                                 bet.choice === 'DOWN' || bet.choice === 'LOWER' ? '↓ LOWER' :
+                                 bet.choice === 'SAME' ? '= SAME' : bet.choice || 'IN GAME'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 font-mono font-bold text-indigo-700">
+                              <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                                {bet.currentCard || '8♠'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 font-bold text-slate-800">₹{Number(bet.betAmount || bet.amount || 0).toFixed(2)}</td>
+                            <td className="py-2.5 px-4 font-black text-blue-600">{Number(bet.multiplier || 1.0).toFixed(2)}x</td>
+                            <td className="py-2.5 px-4 font-black text-emerald-600">₹{Number(bet.potentialWin || 0).toFixed(2)}</td>
+                            <td className="py-2.5 px-4">
+                              <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                                {bet.status || 'PLAYING'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 font-mono text-slate-500 text-[11px]">{bet.time || 'Live'}</td>
+                          </tr>
                         ) : (
                           <tr key={bet.id || Math.random()} className="hover:bg-slate-50/80">
                             <td className="py-2.5 px-4 font-bold text-slate-900">{bet.userEmail || bet.username || 'Player'}</td>
@@ -822,6 +949,7 @@ export function GameControlCenterView({
               ) : (
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl py-4 text-center text-xs font-semibold text-slate-400">
                   {gameType === 'mines' ? 'No active Mines game sessions currently playing. Player sessions will display here live.' :
+                   gameType === 'hilo' ? 'No active HILO game sessions currently playing. Real player bets and continuous prediction rounds will display here live.' :
                    (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
                    `No live bets placed yet for current round ${currentRoundInfo.periodNumber}. Real bets placed by players will display here live.`}
                 </div>
@@ -944,6 +1072,36 @@ export function GameControlCenterView({
                       activeOverrideStatus.includes('TAILS') ? 'bg-slate-300 text-slate-900 border border-slate-400' : 'bg-amber-400 text-slate-950 border border-amber-300'
                     }`}>
                       {activeOverrideStatus.includes('TAILS') ? 'SILVER (TAILS)' : activeOverrideStatus.includes('HEADS') ? 'GOLD (HEADS)' : 'GOLD / SILVER'}
+                    </span>
+                  </div>
+                </>
+              ) : gameType === 'hilo' ? (
+                <>
+                  {/* BASE CARD ON TABLE */}
+                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">CURRENT BASE CARD</span>
+                      <span className="text-xs font-semibold text-slate-300">Active Card on Table</span>
+                    </div>
+                    <span className="px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-sm font-black font-mono text-cyan-300 shadow-md">
+                      {(currentRoundInfo as any).openCard || '8♠'}
+                    </span>
+                  </div>
+
+                  {/* PROJECTED HILO TARGET */}
+                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">PROJECTED OUTCOME</span>
+                      <span className="text-xs font-semibold text-slate-300">Engine Rigging Mode</span>
+                    </div>
+                    <span className={`px-3.5 py-1.5 rounded-xl text-xs font-black uppercase shadow-md ${
+                      activeOverrideStatus.includes('WIN') ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' :
+                      activeOverrideStatus.includes('LOSE') || activeOverrideStatus.includes('LOSS') ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' :
+                      'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    }`}>
+                      {activeOverrideStatus.includes('FORCED')
+                        ? activeOverrideStatus.replace('FORCED OVERRIDE ACTIVE: ', '').replace('FORCED TARGET ACTIVE: ', '')
+                        : `AUTO RTP (${rtp}%)`}
                     </span>
                   </div>
                 </>
@@ -1490,6 +1648,222 @@ export function GameControlCenterView({
         </div>
       )}
 
+      {/* HILO RIGGING & OVERRIDE PANEL */}
+      {gameType === 'hilo' && (
+        <div className="space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                  <span className="text-cyan-500">🃏</span>
+                  <span>HILO CARD RIGGING &amp; OUTCOME OVERRIDE CONTROLS</span>
+                </h3>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  Directly dictate the next drawn card result to guarantee player win/loss, force same rank push, or set high/low card bias
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase ${
+                  activeOverrideStatus.includes('FORCED') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                }`}>
+                  {activeOverrideStatus}
+                </span>
+                {activeOverrideStatus.includes('FORCED') && (
+                  <button
+                    onClick={handleClearOverride}
+                    className="px-3 py-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[10px] rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>🔄</span>
+                    <span>CLEAR OVERRIDE</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-xs font-extrabold text-slate-700 block mb-3 uppercase tracking-wider">
+                SELECT FORCED PREDICTION OUTCOME
+              </span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <button
+                  onClick={() => handleSetTextOverride('FORCE_WIN')}
+                  className="bg-gradient-to-r from-emerald-500 to-teal-700 text-white p-4 rounded-2xl font-black text-left shadow-sm hover:brightness-110 active:scale-98 transition-all group cursor-pointer border border-emerald-400/30"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">🏆</span>
+                    <span className="text-[9px] font-black bg-black/20 px-2 py-0.5 rounded-full uppercase">USER WIN</span>
+                  </div>
+                  <div className="mt-2 text-xs font-black uppercase">FORCE WIN</div>
+                  <div className="text-[10px] text-emerald-100 font-semibold mt-0.5">Always matches player pick (Higher/Lower)</div>
+                </button>
+
+                <button
+                  onClick={() => handleSetTextOverride('FORCE_LOSE')}
+                  className="bg-gradient-to-r from-rose-500 to-red-700 text-white p-4 rounded-2xl font-black text-left shadow-sm hover:brightness-110 active:scale-98 transition-all group cursor-pointer border border-rose-400/30"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">💀</span>
+                    <span className="text-[9px] font-black bg-black/20 px-2 py-0.5 rounded-full uppercase">USER LOSS</span>
+                  </div>
+                  <div className="mt-2 text-xs font-black uppercase">FORCE LOSS</div>
+                  <div className="text-[10px] text-rose-100 font-semibold mt-0.5">Draws card that breaks player prediction</div>
+                </button>
+
+                <button
+                  onClick={() => handleSetTextOverride('FORCE_SAME')}
+                  className="bg-gradient-to-r from-amber-400 to-yellow-600 text-slate-950 p-4 rounded-2xl font-black text-left shadow-sm hover:brightness-110 active:scale-98 transition-all group cursor-pointer border border-amber-300"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">⚖️</span>
+                    <span className="text-[9px] font-black bg-slate-950/20 px-2 py-0.5 rounded-full uppercase">SAME RANK</span>
+                  </div>
+                  <div className="mt-2 text-xs font-black uppercase">FORCE SAME</div>
+                  <div className="text-[10px] font-semibold opacity-90 mt-0.5">Draws exact same rank card (Draw / Push)</div>
+                </button>
+
+                <button
+                  onClick={() => handleSetTextOverride('FORCE_HIGH')}
+                  className="bg-gradient-to-r from-indigo-500 to-purple-700 text-white p-4 rounded-2xl font-black text-left shadow-sm hover:brightness-110 active:scale-98 transition-all group cursor-pointer border border-purple-400/30"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">👑</span>
+                    <span className="text-[9px] font-black bg-black/20 px-2 py-0.5 rounded-full uppercase">10-A FACE</span>
+                  </div>
+                  <div className="mt-2 text-xs font-black uppercase">FORCE HIGH</div>
+                  <div className="text-[10px] text-purple-100 font-semibold mt-0.5">Forces high rank card (10, J, Q, K, A)</div>
+                </button>
+
+                <button
+                  onClick={() => handleSetTextOverride('FORCE_LOW')}
+                  className="bg-gradient-to-r from-cyan-500 to-blue-700 text-white p-4 rounded-2xl font-black text-left shadow-sm hover:brightness-110 active:scale-98 transition-all group cursor-pointer border border-cyan-400/30"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-2xl">🎯</span>
+                    <span className="text-[9px] font-black bg-black/20 px-2 py-0.5 rounded-full uppercase">2-5 SMALL</span>
+                  </div>
+                  <div className="mt-2 text-xs font-black uppercase">FORCE LOW</div>
+                  <div className="text-[10px] text-cyan-100 font-semibold mt-0.5">Forces low rank card (2, 3, 4, 5)</div>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* CARD DECK & PROBABILITY DISTRIBUTION MATRIX */}
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white border border-slate-700 rounded-3xl p-5 shadow-lg space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-700/60 pb-3">
+              <div>
+                <h4 className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-2">
+                  <span>📊</span>
+                  <span>52-CARD PROBABILITY MATRIX &amp; HOUSE MARGIN AUDIT</span>
+                </h4>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  Dynamic mathematical transition probabilities based on active table card &amp; house RTP ({rtp}%)
+                </p>
+              </div>
+              <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black px-3 py-1 rounded-full uppercase">
+                RTP: {rtp}%
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-slate-800/80 border border-slate-700 p-3.5 rounded-2xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Median Card Win Balance</span>
+                <span className="text-xl font-black text-emerald-400 mt-1 block">
+                  {((rtp / 100) * 0.47 * 100).toFixed(2)}%
+                </span>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Fair 47.06% for rank 8 weighted by house RTP ({rtp}%)
+                </span>
+              </div>
+
+              <div className="bg-slate-800/80 border border-slate-700 p-3.5 rounded-2xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">Same Rank Draw Chance</span>
+                <span className="text-xl font-black text-amber-300 mt-1 block">
+                  5.88% (3 / 51 Cards)
+                </span>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Exact same rank draw yielding ~12.00x payout
+                </span>
+              </div>
+
+              <div className="bg-slate-800/80 border border-slate-700 p-3.5 rounded-2xl">
+                <span className="text-[10px] font-bold text-slate-400 uppercase block">House Margin / Edge</span>
+                <span className="text-xl font-black text-rose-400 mt-1 block">
+                  +{(100 - rtp).toFixed(1)}% House Edge
+                </span>
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  House retains ~{(100 - rtp).toFixed(1)}% expected edge over long streaks
+                </span>
+              </div>
+            </div>
+
+            {/* CARD RANK TRANSITION TABLE */}
+            <div className="border border-slate-700/60 rounded-2xl overflow-hidden bg-slate-900/60">
+              <div className="bg-slate-800/60 px-4 py-2 text-[10px] font-black text-slate-300 uppercase tracking-wider border-b border-slate-700/60">
+                Card Rank Transition &amp; Multiplier Distribution
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs text-slate-300">
+                  <thead className="bg-slate-950/40 text-[9px] uppercase font-black text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="py-2 px-3">Base Rank</th>
+                      <th className="py-2 px-3">Higher Prob.</th>
+                      <th className="py-2 px-3">Lower Prob.</th>
+                      <th className="py-2 px-3">Same Prob.</th>
+                      <th className="py-2 px-3">Higher Multiplier</th>
+                      <th className="py-2 px-3">Lower Multiplier</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-[11px]">
+                    <tr>
+                      <td className="py-2 px-3 font-black text-cyan-400">2 (Lowest)</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">92.2%</td>
+                      <td className="py-2 px-3 font-mono text-slate-400">0.0%</td>
+                      <td className="py-2 px-3 font-mono text-amber-300">5.9%</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">1.04x</td>
+                      <td className="py-2 px-3 font-black text-slate-500">—</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 font-black text-cyan-400">5 (Low)</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">68.6%</td>
+                      <td className="py-2 px-3 font-mono text-rose-300">23.5%</td>
+                      <td className="py-2 px-3 font-mono text-amber-300">5.9%</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">1.39x</td>
+                      <td className="py-2 px-3 font-black text-rose-300">4.08x</td>
+                    </tr>
+                    <tr className="bg-cyan-500/10 text-cyan-200 font-bold">
+                      <td className="py-2 px-3 font-black text-amber-400">8 (Median Center)</td>
+                      <td className="py-2 px-3 font-mono">47.1%</td>
+                      <td className="py-2 px-3 font-mono">47.1%</td>
+                      <td className="py-2 px-3 font-mono text-amber-300">5.9%</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">2.04x</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">2.04x</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 font-black text-cyan-400">K (High)</td>
+                      <td className="py-2 px-3 font-mono text-rose-300">7.8%</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">86.3%</td>
+                      <td className="py-2 px-3 font-mono text-amber-300">5.9%</td>
+                      <td className="py-2 px-3 font-black text-rose-300">12.24x</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">1.11x</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 px-3 font-black text-cyan-400">A (Highest)</td>
+                      <td className="py-2 px-3 font-mono text-slate-400">0.0%</td>
+                      <td className="py-2 px-3 font-mono text-emerald-400">92.2%</td>
+                      <td className="py-2 px-3 font-mono text-amber-300">5.9%</td>
+                      <td className="py-2 px-3 font-black text-slate-500">—</td>
+                      <td className="py-2 px-3 font-black text-emerald-400">1.04x</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* JET & CRASH & PUSHPARANI OVERRIDE PANEL (SCREENSHOTS 4 & 5) */}
       {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
@@ -1794,6 +2168,87 @@ export function GameControlCenterView({
                 })}
               </tbody>
             </table>
+          )}
+
+          {/* HILO SPECIFIC SETTLED ROUNDS HISTORY TABLE */}
+          {gameType === 'hilo' && (
+            settledPeriods.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                <div className="text-3xl mb-2">🃏</div>
+                <p className="text-sm font-bold text-slate-700">No settled HILO rounds yet</p>
+                <p className="text-xs text-slate-400 mt-1">Bet history and revenue are at ₹0.00. Live bets and results will automatically appear here.</p>
+              </div>
+            ) : (
+              <table className="w-full text-left text-xs font-medium text-slate-700">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
+                  <tr>
+                    <th className="py-2.5 px-4">Round ID</th>
+                    <th className="py-2.5 px-4">Player</th>
+                    <th className="py-2.5 px-4">Prediction</th>
+                    <th className="py-2.5 px-4">Card Draw</th>
+                    <th className="py-2.5 px-4">Bet Amount</th>
+                    <th className="py-2.5 px-4">Payout</th>
+                    <th className="py-2.5 px-4">Result</th>
+                    <th className="py-2.5 px-4">Engine Mode</th>
+                    <th className="py-2.5 px-4">Settled Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {settledPeriods.map((p: any, idx: number) => {
+                    const roundId = p.period || p.roundId || `#HILO_${idx + 1}`;
+                    const user = p.userEmail || p.user || 'Rivexa Player';
+                    const choice = String(p.choice || p.playerChoice || 'UP').toUpperCase();
+                    const isUp = choice === 'UP' || choice === 'HIGHER';
+                    const isDown = choice === 'DOWN' || choice === 'LOWER';
+                    const currentCard = p.currentCard || '8♠';
+                    const nextCard = p.nextCard || '?';
+                    const betAmt = Number(p.betAmount || p.amount || 0);
+                    const payoutAmt = Number(p.payoutAmount || p.payout || 0);
+                    const result = String(p.result || p.status || 'LOST').toUpperCase();
+                    const isWon = result.includes('WIN') || result.includes('WON');
+                    const isSame = result.includes('SAME') || result.includes('DRAW') || result.includes('PUSH');
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="py-2.5 px-4 font-bold text-blue-600">{roundId}</td>
+                        <td className="py-2.5 px-4 font-bold text-slate-900">{user}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                            isUp ? 'bg-emerald-100 text-emerald-800' :
+                            isDown ? 'bg-rose-100 text-rose-800' :
+                            'bg-amber-100 text-amber-800'
+                          }`}>
+                            {isUp ? '↑ HIGHER' : isDown ? '↓ LOWER' : '= SAME'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-mono font-bold">
+                          <span className="bg-slate-100 px-2 py-0.5 rounded text-slate-800 border border-slate-200">
+                            {currentCard} ➔ {nextCard}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 font-bold text-slate-800">₹{betAmt.toFixed(2)}</td>
+                        <td className="py-2.5 px-4 font-black text-emerald-600">₹{payoutAmt.toFixed(2)}</td>
+                        <td className="py-2.5 px-4">
+                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full ${
+                            isWon ? 'bg-emerald-100 text-emerald-800' :
+                            isSame ? 'bg-amber-100 text-amber-800' :
+                            'bg-rose-100 text-rose-800'
+                          }`}>
+                            {isWon ? 'WON' : isSame ? 'SAME / PUSH' : 'LOST'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className="bg-slate-100 border text-slate-600 text-[9px] font-black px-2 py-0.5 rounded">
+                            {p.override || 'AUTO RTP'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-slate-400 font-mono text-[11px]">{p.time || 'Just now'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )
           )}
 
           {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (

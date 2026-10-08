@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/context/AuthContext";
+import { NotificationProvider } from "@/context/NotificationContext";
 import { MainLayoutWrapper } from "@/components/MainLayoutWrapper";
 
 export default function RootLayout({
@@ -35,9 +36,11 @@ export default function RootLayout({
       </head>
       <body className="min-h-full bg-[#050B20] text-[#F5F7FF] font-sans antialiased">
         <AuthProvider>
-          <MainLayoutWrapper>
-            {children}
-          </MainLayoutWrapper>
+          <NotificationProvider>
+            <MainLayoutWrapper>
+              {children}
+            </MainLayoutWrapper>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

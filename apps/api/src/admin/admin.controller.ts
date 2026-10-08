@@ -183,6 +183,11 @@ export class AdminController {
     return this.adminService.overrideGameResult(id, result);
   }
 
+  @Post('games/:id/reset-history')
+  async resetGameHistory(@Param('id') id: string) {
+    return this.adminService.resetGameHistory(id);
+  }
+
   @Get('reports')
   async getFinancialReports(
     @Query('startDate') startDate?: string,

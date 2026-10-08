@@ -17,7 +17,6 @@ import { PushparaniService } from '../pushparani/pushparani.service.js';
 @WebSocketGateway({
   cors: {
     origin: '*',
-    credentials: true,
   },
   namespace: '/',
 })

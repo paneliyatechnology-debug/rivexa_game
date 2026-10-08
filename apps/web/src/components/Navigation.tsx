@@ -11,6 +11,9 @@ import { GameHubIcon } from '@/components/gamehub/GameHubIcon';
 import { GameHubButton } from '@/components/gamehub/GameHubButton';
 import { GAMEHUB_ASSETS } from '@/config/gamehub-assets';
 import { Search, Volume2, VolumeX, ChevronDown, Plus, Zap, ShieldCheck, Headphones, User, LogOut } from 'lucide-react';
+import { NotificationBell } from '@/components/NotificationBell';
+
+export { NotificationBell };
 
 // ─────────────────────────────────────────────
 // TOP HEADER
@@ -29,8 +32,6 @@ export function TopHeader({
 
   // Initial state matches server HTML (false) to prevent Next.js hydration error
   const [muted, setMuted] = useState<boolean>(false);
-
-  const [unreadCount, setUnreadCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -113,24 +114,7 @@ export function TopHeader({
     } catch {}
   };
 
-  // Fetch unread notifications
-  useEffect(() => {
-    const fetchUnread = async () => {
-      const token =
-        typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
-      if (!token) return;
-      try {
-        const res = await fetch(`${getApiBaseUrl()}/notifications/unread-count`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (typeof data.unreadCount === 'number') setUnreadCount(data.unreadCount);
-        }
-      } catch {}
-    };
-    fetchUnread();
-  }, []);
+
 
   const username = authUser?.name || authUser?.phone || 'Sharma ji';
 
@@ -188,19 +172,8 @@ export function TopHeader({
             )}
           </button>
 
-          {/* Notification bell */}
-          <Link
-            href="/notifications"
-            className="relative w-7 h-7 sm:w-9 sm:h-9 rounded-full bg-[#101C3A] border border-white/10 flex items-center justify-center shrink-0 hover:border-amber-400/40 transition-all"
-          >
-            <GameHubIcon name="bell" size={14} isActive activeColor="#FFC928" className="sm:hidden" />
-            <GameHubIcon name="bell" size={16} isActive activeColor="#FFC928" className="hidden sm:block" />
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[15px] h-[15px] px-0.5 rounded-full bg-rose-600 text-[8px] font-black text-white flex items-center justify-center shadow-lg">
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </Link>
+          {/* Global Notification Bell */}
+          <NotificationBell />
 
           {/* Wallet Balance + Integrated Deposit Pill (Responsive for all mobile screens) */}
           <div className="bg-[#0A1E14] border border-[#00E5A0]/40 rounded-full pl-2 sm:pl-3 pr-1 py-0.5 sm:py-1 flex items-center gap-1 sm:gap-2 shadow-[0_0_12px_rgba(0,229,160,0.15)] shrink-0">

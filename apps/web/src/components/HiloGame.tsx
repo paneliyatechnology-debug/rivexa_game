@@ -38,6 +38,7 @@ import {
 import { getApiBaseUrl } from '@/lib/config';
 import { useAuth } from '@/context/AuthContext';
 import ValidationErrorModal, { ValidationErrorType } from './ValidationErrorModal';
+import { NotificationBell } from '@/components/NotificationBell';
 
 export type CardRank = '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K' | 'A';
 export type CardSuit = 'spades' | 'hearts' | 'diamonds' | 'clubs';
@@ -211,6 +212,10 @@ export default function HiloGame() {
     currentBalance?: number;
   } | null>(null);
 
+  // Dynamic min and max bet limits fetched from game configuration (defaults min: ₹10, max: ₹500,000)
+  const [minBetLimit, setMinBetLimit] = useState<number>(10);
+  const [maxBetLimit, setMaxBetLimit] = useState<number>(500000);
+
   // Confetti particles for WIN / CASHOUT
   const [confettiActive, setConfettiActive] = useState<boolean>(false);
 
@@ -311,6 +316,38 @@ export default function HiloGame() {
   const [isSessionLoaded, setIsSessionLoaded] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
 
+  // Fetch real game config (minBet, maxBet) dynamically from server
+  const fetchGameConfig = useCallback(async () => {
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/hilo/config`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.minBet !== undefined && !isNaN(Number(data.minBet))) {
+          setMinBetLimit(Number(data.minBet));
+        }
+        if (data?.maxBet !== undefined && !isNaN(Number(data.maxBet))) {
+          setMaxBetLimit(Number(data.maxBet));
+        }
+        return;
+      }
+    } catch (e) {}
+
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/games/hilo/config`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.minBet !== undefined && !isNaN(Number(data.minBet))) {
+          setMinBetLimit(Number(data.minBet));
+        }
+        if (data?.maxBet !== undefined && !isNaN(Number(data.maxBet))) {
+          setMaxBetLimit(Number(data.maxBet));
+        }
+      }
+    } catch (e) {}
+  }, []);
+
   // Initialize and check active session
   useEffect(() => {
     setMounted(true);
@@ -320,6 +357,8 @@ export default function HiloGame() {
         setSoundEnabled(savedSound === 'true');
       }
     } catch (e) { }
+
+    fetchGameConfig();
 
     // Wait for auth to resolve before querying user-specific data
     if (authLoading) return;
@@ -344,7 +383,7 @@ export default function HiloGame() {
         fetchActiveSession();
       }
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, fetchGameConfig]);
 
   // Fetch real game history from server with pagination (10 per page)
   const fetchHistory = useCallback(async (page = 1, explicitUserId?: string) => {
@@ -395,6 +434,10 @@ export default function HiloGame() {
       const res = await fetch(`${apiBase}/hilo/session/active?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
+        if (data && data.config) {
+          if (data.config.minBet) setMinBetLimit(Number(data.config.minBet));
+          if (data.config.maxBet) setMaxBetLimit(Number(data.config.maxBet));
+        }
         if (data && data.session) {
           const s = data.session;
           setActiveSession({
@@ -442,20 +485,20 @@ export default function HiloGame() {
     if (typeof val === 'number') {
       setBetAmount(val.toString());
     } else if (val === '2X') {
-      const curr = parseFloat(betAmount) || 10;
-      setBetAmount(Math.min(50000, curr * 2).toString());
+      const curr = parseFloat(betAmount) || minBetLimit;
+      setBetAmount(Math.min(maxBetLimit, curr * 2).toString());
     } else if (val === 'HALF') {
-      const curr = parseFloat(betAmount) || 10;
-      setBetAmount(Math.max(10, Math.floor(curr / 2)).toString());
+      const curr = parseFloat(betAmount) || minBetLimit;
+      setBetAmount(Math.max(minBetLimit, Math.floor(curr / 2)).toString());
     } else if (val === 'MAX') {
-      setBetAmount(Math.min(currentBalance, 50000).toString());
+      setBetAmount(Math.min(currentBalance, maxBetLimit).toString());
     }
   };
 
   const handleStepAmount = (delta: number) => {
     if (isProcessing || activeSession?.status === 'ACTIVE') return;
-    const curr = parseFloat(betAmount) || 10;
-    const next = Math.max(10, Math.min(50000, curr + delta));
+    const curr = parseFloat(betAmount) || minBetLimit;
+    const next = Math.max(minBetLimit, Math.min(maxBetLimit, curr + delta));
     setBetAmount(next.toString());
   };
 
@@ -470,25 +513,25 @@ export default function HiloGame() {
       return false;
     }
 
-    if (isNaN(amt) || amt < 10) {
+    if (isNaN(amt) || amt < minBetLimit) {
       setValidationModal({
         isOpen: true,
         type: 'INVALID_BET',
-        message: 'Minimum bet amount for HILO is ₹10.',
-        minBet: 10,
-        maxBet: 50000,
+        message: `Minimum bet amount for HILO is ₹${minBetLimit}.`,
+        minBet: minBetLimit,
+        maxBet: maxBetLimit,
         requiredAmount: amt || 0,
       });
       return false;
     }
 
-    if (amt > 50000) {
+    if (amt > maxBetLimit) {
       setValidationModal({
         isOpen: true,
         type: 'INVALID_BET',
-        message: 'Bet amount must be between ₹10 and ₹50,000.',
-        minBet: 10,
-        maxBet: 50000,
+        message: `Bet amount must be between ₹${minBetLimit} and ₹${maxBetLimit.toLocaleString('en-IN')}.`,
+        minBet: minBetLimit,
+        maxBet: maxBetLimit,
         requiredAmount: amt,
       });
       return false;
@@ -1495,14 +1538,8 @@ export default function HiloGame() {
               {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
             </button>
 
-            {/* Notification Bell (hidden on mobile < sm) */}
-            <button
-              className="hidden sm:flex w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#0c1833] hover:bg-[#122349] border border-[#1d325c] text-slate-300 hover:text-white items-center justify-center transition-colors relative cursor-pointer"
-              title="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="w-2 h-2 rounded-full bg-[#FFC928] absolute top-2 right-2 shadow-[0_0_6px_#FFC928]" />
-            </button>
+            {/* Global Notification Bell (Matches Home page) */}
+            <NotificationBell />
 
             {/* Wallet Balance Pill */}
             <div className="flex items-center gap-1.5 sm:gap-2 bg-[#091f17] border border-[#00E5A0]/60 rounded-full pl-2.5 sm:pl-3 pr-1 py-1 shadow-[0_0_15px_rgba(0,229,160,0.2)]">

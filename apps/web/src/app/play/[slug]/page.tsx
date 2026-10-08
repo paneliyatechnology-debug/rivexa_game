@@ -61,13 +61,22 @@ export default function PlayGamePage() {
   }
 
   const [userState, setUserState] = useState<{ id: string; email: string } | null>(null);
-  const [balanceState, setBalanceState] = useState<number>(0);
+  const [localBalance, setLocalBalance] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (authBalance !== undefined && authBalance !== null) {
+      setLocalBalance(authBalance);
+    }
+  }, [authBalance]);
 
   const user = authUser || userState;
-  const balance = authBalance ?? balanceState;
+  const balance = localBalance !== null ? localBalance : (authBalance ?? 0);
 
   const setBalance = (updater: number | ((prev: number) => number)) => {
-    setBalanceState(updater);
+    setLocalBalance((prev) => {
+      const current = prev !== null ? prev : (authBalance ?? 0);
+      return typeof updater === 'function' ? updater(current) : updater;
+    });
   };
   const [betAmount, setBetAmount] = useState<string>('100');
   const [autoCashout, setAutoCashout] = useState<string>('');
@@ -239,19 +248,35 @@ export default function PlayGamePage() {
 
   const fetchBalance = async (userId: string) => {
     try {
+      if (refreshBalance) {
+        refreshBalance().catch(() => {});
+      }
       const apiUrl = getApiBaseUrl();
       const res = await fetch(`${apiUrl}/wallet/balance?userId=${userId}`);
       if (res.ok) {
         const data = await res.json();
         const mainBal = Number(data.mainBalance);
         if (!isNaN(mainBal)) {
-          setBalance(mainBal);
+          setLocalBalance(mainBal);
         }
       }
     } catch (e) {
       // fallback
     }
   };
+
+  useEffect(() => {
+    const handleBalanceEvent = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce?.detail?.newBalance !== undefined && typeof ce.detail.newBalance === 'number') {
+        setLocalBalance(ce.detail.newBalance);
+      } else {
+        if (user?.id) fetchBalance(user.id);
+      }
+    };
+    window.addEventListener('balance_updated', handleBalanceEvent);
+    return () => window.removeEventListener('balance_updated', handleBalanceEvent);
+  }, [user?.id]);
 
   // Jet flight animation tick
   useEffect(() => {
@@ -846,7 +871,12 @@ export default function PlayGamePage() {
             <FastParityGame
               user={user}
               balance={balance}
-              onBalanceUpdate={() => fetchBalance(user?.id || 'demo_user')}
+              onBalanceUpdate={(newBal) => {
+                if (typeof newBal === 'number') {
+                  setLocalBalance(newBal);
+                }
+                fetchBalance(user?.id || 'demo_user');
+              }}
               gameMode={slug === 'parity' ? 'parity' : 'fast-parity'}
             />
           </div>

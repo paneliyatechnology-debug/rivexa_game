@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { getApiBaseUrl } from '@/lib/config';
 import ValidationErrorModal, { ValidationErrorType } from './ValidationErrorModal';
+import { useAuth } from '@/context/AuthContext';
 
 // ─── Web Audio Sound Engine ───────────────────────────────────────────────────
 class SoundEngine {
@@ -71,9 +72,9 @@ class SoundEngine {
 const soundEngine = typeof window !== 'undefined' ? new SoundEngine() : null;
 
 interface FastParityGameProps {
-  user: { id: string; email: string } | null;
-  balance: number;
-  onBalanceUpdate: () => void;
+  user?: { id: string; email: string } | null;
+  balance?: number;
+  onBalanceUpdate?: (newBalance?: number) => void;
   gameMode?: 'fast-parity' | 'parity';
 }
 
@@ -135,6 +136,28 @@ function formatTimestamp(iso: string | null | undefined): string {
 }
 
 export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: FastParityGameProps) {
+  const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
+  const currentBalance = balance !== undefined ? balance : (authBalance ?? 0);
+  const currentBalanceRef = useRef(currentBalance);
+
+  useEffect(() => {
+    currentBalanceRef.current = currentBalance;
+  }, [currentBalance]);
+
+  const triggerBalanceUpdate = useCallback((newBal?: number) => {
+    if (typeof newBal === 'number') {
+      onBalanceUpdate?.(newBal);
+    } else {
+      onBalanceUpdate?.();
+    }
+    if (refreshBalance) {
+      refreshBalance().catch(() => {});
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('balance_updated', { detail: { newBalance: newBal } }));
+    }
+  }, [onBalanceUpdate, refreshBalance]);
+
   const initialInterval: 30 | 60 = gameMode === 'parity' ? 60 : 30;
   const [intervalMode, setIntervalMode]   = useState<30 | 60>(initialInterval);
   const [countdown,    setCountdown]      = useState<number>(initialInterval);
@@ -301,6 +324,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
   // Helper to reliably get active user ID from props or localStorage
   const getUserId = useCallback(() => {
     if (user?.id) return user.id;
+    if (authUser?.id) return authUser.id;
     if (typeof window !== 'undefined') {
       try {
         const u1 = JSON.parse(localStorage.getItem('rivexa_user') || '{}');
@@ -310,7 +334,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
       } catch {}
     }
     return '';
-  }, [user?.id]);
+  }, [user?.id, authUser?.id]);
 
   // Calculate local period ID using exact Laravel formula
   const getLocalPeriodId = useCallback((sec: number) => {
@@ -323,6 +347,59 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
     return `${yyyy}${mm}${dd}${String(periodIndex % 10000).padStart(4, '0')}`;
   }, []);
 
+  // ─── Paginated History Fetch (lazy loading from server) ──────────────────
+  const fetchHistory = useCallback(async (page: number, replace = false) => {
+    setHistoryLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/games/parity/history?page=${page}&limit=10&interval=${intervalMode}`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success) return;
+
+      const newRows: PeriodResult[] = (json.data || []).map((h: any) => ({
+        periodNumber: h.period_number,
+        number: h.number,
+        colors: h.colors || [],
+        createdAt: h.created_at || null,
+      }));
+
+      setHistoryRows(prev => replace ? newRows : [...prev, ...newRows]);
+      setHistoryPagination(json.pagination || null);
+      setHistoryLoadPage(page);
+    } catch {}
+    finally { setHistoryLoading(false); }
+  }, [intervalMode]);
+
+  // ─── Paginated My Bets Fetch (lazy loading from server) ────────────────
+  const fetchMyBets = useCallback(async (page: number, replace = false) => {
+    const activeUserId = getUserId();
+    if (!activeUserId) return;
+    setMyBetsLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/games/parity/my-bets?userId=${activeUserId}&page=${page}&limit=10`);
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.success) return;
+
+      const newRows: UserBet[] = (json.data || []).map((b: any) => ({
+        id: b.id,
+        periodNumber: b.period_number,
+        selectOption: b.bet_type,
+        amount: parseFloat(b.bet_amount) || 0,
+        winAmount: parseFloat(b.win_amount) || 0,
+        status: b.status as 'pending' | 'won' | 'lost',
+        createdAt: b.created_at || null,
+      }));
+
+      setMyBetsRows(prev => replace ? newRows : [...prev, ...newRows]);
+      setMyBetsPagination(json.pagination || null);
+      setMyBetsLoadPage(page);
+    } catch {}
+    finally { setMyBetsLoading(false); }
+  }, [getUserId]);
+
   // ─── Synchronized State Polling (Laravel GameController getGameState) ───────
   const pollGameState = useCallback(async () => {
     try {
@@ -333,6 +410,13 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
       const data = await res.json();
 
       if (!data.success) return;
+
+      // 0. Synchronize Real-Time User Balance
+      if (typeof data.user_balance === 'number') {
+        if (Math.abs(data.user_balance - currentBalanceRef.current) > 0.01) {
+          triggerBalanceUpdate(data.user_balance);
+        }
+      }
 
       // 1. Sync Period Number
       if (data.current_period) {
@@ -398,7 +482,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
             setLossModalData(bet);
             playSound(() => soundEngine!.loss());
           }
-          onBalanceUpdate();
+          triggerBalanceUpdate();
           // Refresh my bets after settlement
           setMyBetsLoadPage(1);
           fetchMyBets(1, true);
@@ -407,60 +491,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
     } catch (err) {
       // Connection polling retry
     }
-  }, [getUserId, intervalMode, onBalanceUpdate, playSound]);
-
-  // ─── Paginated History Fetch (lazy loading from server) ──────────────────
-  const fetchHistory = useCallback(async (page: number, replace = false) => {
-    setHistoryLoading(true);
-    try {
-      const apiBase = getApiBaseUrl();
-      const res = await fetch(`${apiBase}/games/parity/history?page=${page}&limit=10&interval=${intervalMode}`);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (!json.success) return;
-
-      const newRows: PeriodResult[] = (json.data || []).map((h: any) => ({
-        periodNumber: h.period_number,
-        number: h.number,
-        colors: h.colors || [],
-        createdAt: h.created_at || null,
-      }));
-
-      setHistoryRows(prev => replace ? newRows : [...prev, ...newRows]);
-      setHistoryPagination(json.pagination || null);
-      setHistoryLoadPage(page);
-    } catch {}
-    finally { setHistoryLoading(false); }
-  }, [intervalMode]);
-
-  // ─── Paginated My Bets Fetch (lazy loading from server) ────────────────
-  const fetchMyBets = useCallback(async (page: number, replace = false) => {
-    const activeUserId = getUserId();
-    if (!activeUserId) return;
-    setMyBetsLoading(true);
-    try {
-      const apiBase = getApiBaseUrl();
-      const res = await fetch(`${apiBase}/games/parity/my-bets?userId=${activeUserId}&page=${page}&limit=10`);
-      if (!res.ok) return;
-      const json = await res.json();
-      if (!json.success) return;
-
-      const newRows: UserBet[] = (json.data || []).map((b: any) => ({
-        id: b.id,
-        periodNumber: b.period_number,
-        selectOption: b.bet_type,
-        amount: parseFloat(b.bet_amount) || 0,
-        winAmount: parseFloat(b.win_amount) || 0,
-        status: b.status as 'pending' | 'won' | 'lost',
-        createdAt: b.created_at || null,
-      }));
-
-      setMyBetsRows(prev => replace ? newRows : [...prev, ...newRows]);
-      setMyBetsPagination(json.pagination || null);
-      setMyBetsLoadPage(page);
-    } catch {}
-    finally { setMyBetsLoading(false); }
-  }, [getUserId]);
+  }, [getUserId, intervalMode, triggerBalanceUpdate, playSound, fetchMyBets]);
 
   // Load history page 1 on mount and when intervalMode changes
   useEffect(() => {
@@ -492,8 +523,19 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
         const next = prev <= 1 ? intervalMode : prev - 1;
 
         if (prev <= 1) {
-          // Period just reset — poll for new result
-          setTimeout(pollGameState, 500);
+          // Period just reset — poll for new result and trigger balance sync
+          setTimeout(() => {
+            pollGameState();
+            triggerBalanceUpdate();
+          }, 500);
+          setTimeout(() => {
+            pollGameState();
+            triggerBalanceUpdate();
+          }, 1500);
+          setTimeout(() => {
+            pollGameState();
+            triggerBalanceUpdate();
+          }, 3000);
           // Refresh history list for the new period
           setTimeout(() => fetchHistory(1, true), 1000);
         } else if (prev === 6) {
@@ -509,7 +551,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [intervalMode, pollGameState, getLocalPeriodId, playSound, fetchHistory]);
+  }, [intervalMode, pollGameState, getLocalPeriodId, playSound, fetchHistory, triggerBalanceUpdate]);
 
   // ─── Open bet modal — no sound here, sound fires on CONFIRM ─────────────────
   const openBetModal = (type: string, label: string, multiplier: number) => {
@@ -560,14 +602,14 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
       return;
     }
 
-    if (balance <= 0 || amount > balance) {
+    if (currentBalance <= 0 || amount > currentBalance) {
       setBetModal((prev) => ({ ...prev, isOpen: false }));
       setValidationModal({
         isOpen: true,
         type: 'INSUFFICIENT_BALANCE',
-        message: `Your current balance (₹${balance.toFixed(2)}) is insufficient for a ₹${amount.toFixed(2)} bet. Please recharge your wallet.`,
+        message: `Your current balance (₹${currentBalance.toFixed(2)}) is insufficient for a ₹${amount.toFixed(2)} bet. Please recharge your wallet.`,
         requiredAmount: amount,
-        currentBalance: balance,
+        currentBalance: currentBalance,
       });
       return;
     }
@@ -598,7 +640,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
             type: 'INSUFFICIENT_BALANCE',
             message: errMsg,
             requiredAmount: amount,
-            currentBalance: balance,
+            currentBalance: currentBalance,
           });
         } else {
           setValidationModal({
@@ -615,9 +657,15 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
       showToast(`✅ ₹${amount.toFixed(2)} bet placed on ${betModal.label} — waiting for result...`);
       playSound(() => soundEngine!.betPlaced());
 
+      // Instantly deduct & sync balance across app
+      if (typeof data.new_balance === 'number') {
+        triggerBalanceUpdate(data.new_balance);
+      } else {
+        triggerBalanceUpdate();
+      }
+
       // Poll state immediately to show PENDING bet in table and updated balance
       pollGameState();
-      onBalanceUpdate();
       // Refresh my bets list from paginated API
       setMyBetsRows([]);
       setMyBetsLoadPage(1);
@@ -713,13 +761,12 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
           </div>
         </div>
 
-        {/* Right: Neon Gaming Artwork + Rules Button (Desktop) */}
-        <div className="hidden sm:flex items-center gap-3 z-10 w-full sm:w-auto justify-end">
-          {/* <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-[#071735]/90 border border-[#287BFF]/30">
-            <span className="text-lg">🎲</span>
-            <span className="text-lg">💎</span>
-            <span className="text-lg">🪙</span>
-          </div> */}
+        {/* Right: Balance Pill + Rules Button */}
+        <div className="flex items-center gap-2 sm:gap-3 z-10 w-full sm:w-auto justify-between sm:justify-end">
+          <div className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 rounded-full bg-[#071735]/90 border border-[#00E5A0]/40 shadow-[0_0_12px_rgba(0,229,160,0.15)]">
+            <span className="text-[10px] font-black text-[#9DB5D8] uppercase tracking-wider">Balance:</span>
+            <span className="text-xs sm:text-sm font-black font-mono text-[#00E5A0]">₹{currentBalance.toFixed(2)}</span>
+          </div>
           <button
             onClick={() => setShowRulesModal(true)}
             className="border border-[#00D9FF]/50 text-[#00D9FF] bg-[#101C3A] hover:bg-[#142650] px-4 py-2 rounded-full font-bold text-xs shadow-[0_0_14px_rgba(0,217,255,0.25)] flex items-center gap-1.5 transition-all cursor-pointer"
@@ -1175,6 +1222,10 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
 
               <div className="bg-[#0B2254] border border-[#287BFF]/35 rounded-2xl p-4 space-y-2 text-xs font-mono">
                 <div className="flex justify-between text-[#9DB5D8]">
+                  <span>Available Balance:</span>
+                  <span className="font-bold text-[#00E5A0]">₹{currentBalance.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-[#9DB5D8]">
                   <span>Contract Amount:</span>
                   <span className="font-bold text-white">₹{contractAmount.toFixed(2)}</span>
                 </div>
@@ -1342,7 +1393,7 @@ export function FastParityGame({ user, balance, onBalanceUpdate, gameMode }: Fas
           onClose={() => setValidationModal(null)}
           type={validationModal.type}
           message={validationModal.message}
-          currentBalance={validationModal.currentBalance ?? balance}
+          currentBalance={validationModal.currentBalance ?? currentBalance}
           requiredAmount={validationModal.requiredAmount}
           minBet={validationModal.minBet}
           maxBet={validationModal.maxBet}

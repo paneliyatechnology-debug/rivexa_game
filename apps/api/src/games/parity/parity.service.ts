@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
 import { ReferralService } from '../../referral/referral.service.js';
 import { GameOverrideService } from '../game-engine/game-override.service.js';
+import { GameGateway } from '../game-engine/game.gateway.js';
 
 @Injectable()
 export class ParityService {
@@ -9,6 +10,7 @@ export class ParityService {
     private readonly db: DatabaseService,
     private readonly referralService: ReferralService,
     private readonly overrideService: GameOverrideService,
+    @Optional() private readonly gameGateway?: GameGateway,
   ) {}
 
   private readonly DEMO_UUID = '00000000-0000-0000-0000-000000000000';
@@ -519,6 +521,10 @@ export class ParityService {
       data:  { mainBalance: balanceAfter },
     });
 
+    try {
+      this.gameGateway?.emitWalletUpdate(activeUserId, balanceAfter);
+    } catch (e) {}
+
     await this.db.walletTransaction.create({
       data: {
         walletId:      wallet.id,
@@ -600,6 +606,10 @@ export class ParityService {
               data: { mainBalance: winBalanceAfter },
             });
 
+            try {
+              this.gameGateway?.emitWalletUpdate(bet.userId, winBalanceAfter);
+            } catch (e) {}
+
             await this.db.walletTransaction.create({
               data: {
                 walletId:      wallet.id,
@@ -671,6 +681,10 @@ export class ParityService {
             where: { id: wallet.id },
             data:  { mainBalance: winBalanceAfter },
           });
+
+          try {
+            this.gameGateway?.emitWalletUpdate(bet.userId, winBalanceAfter);
+          } catch (e) {}
 
           await this.db.walletTransaction.create({
             data: {

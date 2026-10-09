@@ -166,7 +166,7 @@ export default function ProfilePage() {
     }
   };
 
-  const displayName = user.name || 'Sharma ji';
+  const displayName = user.name || user.phone || (user.email ? user.email.split('@')[0] : 'Player');
 
   return (
     <div className="flex flex-col min-h-screen pt-[84px] bg-[#050B20] text-[#F8FAFC] selection:bg-[#00E5FF] selection:text-[#050B20] font-sans">
@@ -537,7 +537,7 @@ export default function ProfilePage() {
                   </label>
                   <input
                     type="text"
-                    placeholder="Rahul Sharma"
+                    placeholder="Account Holder Name"
                     value={accountHolder}
                     onChange={(e) => setAccountHolder(e.target.value)}
                     required

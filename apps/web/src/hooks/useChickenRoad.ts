@@ -85,6 +85,16 @@ export const useChickenRoad = () => {
   // Handle Play Button Click (Direct Start on First Road Step)
   const handlePlay = useCallback(async () => {
     if (isPendingRef.current) return;
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+    if (!token) {
+      if (typeof window !== 'undefined') {
+        alert('Please login to place bets and play games!');
+        window.location.href = '/login';
+      }
+      return;
+    }
+
     const curStatus = useChickenRoadStore.getState().status;
     const cooldown = useChickenRoadStore.getState().playCooldown;
     if (curStatus === 'MOVING' || curStatus === 'RUNNING' || cooldown > 0) return;

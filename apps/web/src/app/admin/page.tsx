@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getApiBaseUrl } from '@/lib/config';
 import { GameControlCenterView } from '@/components/admin/GameControlCenterView';
+import { GameSessionsManagementView } from '@/components/admin/GameSessionsManagementView';
 
 interface StatData {
   totalUsers: number;
@@ -54,6 +55,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     if (s.includes('withdrawal')) return 'withdrawals';
     if (s.includes('user')) return 'users';
     if (s.includes('tenant') || s.includes('operator')) return 'tenants';
+    if (s.includes('session')) return 'game-sessions';
     if (s.includes('game')) return 'games';
     if (s.includes('override')) return 'override';
     return s;
@@ -1555,6 +1557,14 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                   <span className="text-sm">🎯</span>
                   <span>Result Overrides</span>
                 </button>
+
+                <button
+                  onClick={() => handleTabSelect('game-sessions')}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold transition-colors ${activeTab === 'game-sessions' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 font-extrabold shadow-xs' : 'text-slate-600 hover:bg-slate-50'}`}
+                >
+                  <span className="text-sm">🛡️</span>
+                  <span>Game Sessions &amp; Security</span>
+                </button>
               </nav>
             </div>
 
@@ -2852,7 +2862,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                         <input
                           type="text"
                           required
-                          placeholder="e.g. Rahul Sharma"
+                          placeholder="e.g. John Doe"
                           value={addUserForm.name}
                           onChange={(e) => setAddUserForm({ ...addUserForm, name: e.target.value })}
                           className="w-full px-3.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -3709,6 +3719,11 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                 ))}
               </div>
             </div>
+          )}
+
+          {/* GAME SESSIONS & SECURITY MANAGEMENT TAB */}
+          {activeTab === 'game-sessions' && (
+            <GameSessionsManagementView />
           )}
 
           {/* BANK CARD APPROVAL CENTER */}

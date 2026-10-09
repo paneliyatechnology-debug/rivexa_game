@@ -116,7 +116,9 @@ export function TopHeader({
 
 
 
-  const username = authUser?.name || authUser?.phone || 'Sharma ji';
+  const username = authUser
+    ? (authUser.name || authUser.phone || (authUser.email ? authUser.email.split('@')[0] : 'Player'))
+    : 'Guest';
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-[#08152E]/95 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.5)]">

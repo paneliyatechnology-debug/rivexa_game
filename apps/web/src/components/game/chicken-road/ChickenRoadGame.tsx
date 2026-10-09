@@ -13,11 +13,14 @@ import { useAuth } from '@/context/AuthContext';
 import { useChickenRoadStore } from '../../../store/chickenRoadStore';
 
 import { useResponsiveViewport } from '../../../hooks/useResponsiveViewport';
+import { useGameTokenValidation } from '../../../hooks/useGameTokenValidation';
+import { InvalidCredentialsModal } from '../../InvalidCredentialsModal';
 
 export const ChickenRoadGame: React.FC = () => {
   const { balance } = useAuth();
   const setWalletBalance = useChickenRoadStore((s) => s.setWalletBalance);
   const { profile, observeContainer } = useResponsiveViewport();
+  const { isInvalid, errorMessage } = useGameTokenValidation();
 
   const isTooSmall = profile === 'compact';
 
@@ -32,6 +35,12 @@ export const ChickenRoadGame: React.FC = () => {
       ref={observeContainer}
       className="h-[100dvh] max-h-[100dvh] bg-[#0d0e12] text-white flex flex-col font-sans select-none overflow-hidden selection:bg-[#00D9FF] selection:text-slate-950 relative pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]"
     >
+      {/* INVALID TOKEN / LOGIN CREDENTIALS ERROR OVERLAY */}
+      <InvalidCredentialsModal
+        isOpen={isInvalid}
+        message={errorMessage || 'Invalid user login credentials(Error:45)'}
+      />
+
       {/* ULTRA-COMPACT WATCH VIEWPORT FALLBACK BADGE */}
       {isTooSmall && (
         <div className="absolute inset-0 z-50 bg-[#0d0e12]/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center">

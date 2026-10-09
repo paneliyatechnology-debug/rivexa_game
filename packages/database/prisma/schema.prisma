@@ -70,6 +70,16 @@ enum HiloSessionStatus {
   COMPLETED
 }
 
+enum GameSessionStatus {
+  CREATED
+  ACTIVE
+  CLOSED
+  EXPIRED
+  REVOKED
+  FAILED
+}
+
+
 
 model User {
   id                      String                   @id @default(uuid()) @db.Uuid
@@ -116,6 +126,7 @@ model User {
   hiloPlays               HiloPlay[]
   tenantPlayers           TenantPlayer[]
   chickenRoadRounds       ChickenRoadRound[]
+  gameSessions            GameSession[]
   createdAt               DateTime                 @default(now()) @map("created_at")
   updatedAt               DateTime                 @updatedAt @map("updated_at")
 
@@ -357,6 +368,7 @@ model Game {
   isActive      Boolean     @default(true) @map("is_active")
   manifest      Json        @default("{}")
   gameBets      GameBet[]
+  gameSessions  GameSession[]
   createdAt     DateTime    @default(now()) @map("created_at")
 
   @@map("games")
@@ -1555,5 +1567,65 @@ model ChickenRoadAuditLog {
 
   @@map("chicken_road_audit_logs")
 }
+
+model GameProvider {
+  id           String        @id @default(uuid()) @db.Uuid
+  slug         String        @unique
+  name         String
+  isEnabled    Boolean       @default(true) @map("is_enabled")
+  capabilities Json          @default("{}")
+  config       Json          @default("{}")
+  gameSessions GameSession[]
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("game_providers")
+}
+
+model GameSession {
+  id                 String            @id @default(uuid()) @db.Uuid
+  userId             String            @map("user_id") @db.Uuid
+  user               User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameId             String            @map("game_id") @db.Uuid
+  game               Game              @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  tokenHash          String            @map("token_hash")
+  providerId         String?           @map("provider_id") @db.Uuid
+  provider           GameProvider?     @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  providerSessionId  String?           @map("provider_session_id")
+  status             GameSessionStatus @default(CREATED)
+  mode               String            @default("REAL")
+  currency           String            @default("INR")
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt          DateTime          @map("expires_at") @db.Timestamptz
+  absoluteExpiresAt  DateTime          @map("absolute_expires_at") @db.Timestamptz
+  lastActivityAt     DateTime?         @map("last_activity_at") @db.Timestamptz
+  closedAt           DateTime?         @map("closed_at") @db.Timestamptz
+  revokedAt          DateTime?         @map("revoked_at") @db.Timestamptz
+  revocationReason   String?           @map("revocation_reason")
+  metadata           Json              @default("{}")
+  events             GameSessionEvent[]
+
+  @@index([userId])
+  @@index([gameId])
+  @@index([status])
+  @@index([expiresAt])
+  @@index([tokenHash])
+  @@index([providerSessionId])
+  @@map("game_sessions")
+}
+
+model GameSessionEvent {
+  id        String      @id @default(uuid()) @db.Uuid
+  sessionId String      @map("session_id") @db.Uuid
+  session   GameSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  eventType String      @map("event_type")
+  payload   Json        @default("{}")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([sessionId])
+  @@index([eventType])
+  @@map("game_session_events")
+}
+
 
 

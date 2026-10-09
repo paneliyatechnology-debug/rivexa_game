@@ -14,14 +14,18 @@ import CoinFlipGame from '@/components/CoinFlipGame';
 import { DiceGame } from '@/components/DiceGame';
 import { MinesGame } from '@/components/MinesGame';
 import HiloGame from '@/components/HiloGame';
+import ChickenRoadGame from '@/components/game/chicken-road/ChickenRoadGame';
 import { getApiBaseUrl } from '@/lib/config';
 import ValidationErrorModal, { ValidationErrorType } from '@/components/ValidationErrorModal';
 import { useAuth } from '@/context/AuthContext';
+import { useGameTokenValidation } from '@/hooks/useGameTokenValidation';
+import { InvalidCredentialsModal } from '@/components/InvalidCredentialsModal';
 
 export default function PlayGamePage() {
   const params = useParams();
   const slug = (params.slug as string) || 'crash';
 
+  const { isInvalid, errorMessage } = useGameTokenValidation();
   const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
 
   if (slug === 'hilo') {
@@ -58,6 +62,10 @@ export default function PlayGamePage() {
 
   if (slug === 'mines') {
     return <MinesGame />;
+  }
+
+  if (slug === 'chicken-road' || slug === 'chickenroad') {
+    return <ChickenRoadGame />;
   }
 
   const [userState, setUserState] = useState<{ id: string; email: string } | null>(null);
@@ -801,6 +809,11 @@ export default function PlayGamePage() {
 
   return (
     <div className="w-full min-h-screen bg-[#050B20] text-gray-100 flex flex-col font-sans selection:bg-[#287BFF]/30 selection:text-[#00D9FF] pt-[84px]">
+      {/* INVALID GAME TOKEN ERROR OVERLAY */}
+      <InvalidCredentialsModal
+        isOpen={isInvalid}
+        message={errorMessage || 'Invalid user login credentials(Error:45)'}
+      />
       <TopHeader balance={balance} onSearch={() => {}} />
 
       <div className="flex-1 flex w-full max-w-[1700px] mx-auto px-2 sm:px-4 py-4 gap-6 lg:pl-[220px] xl:pl-60 relative z-10">

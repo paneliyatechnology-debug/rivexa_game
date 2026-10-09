@@ -28,6 +28,17 @@ export default function PlayGamePage() {
   const { isInvalid, errorMessage } = useGameTokenValidation();
   const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
 
+  if (isInvalid) {
+    return (
+      <div className="w-full min-h-screen bg-[#050B20] text-gray-100 flex flex-col font-sans">
+        <InvalidCredentialsModal
+          isOpen={true}
+          message={errorMessage || 'Invalid user login credentials(Error:45)'}
+        />
+      </div>
+    );
+  }
+
   if (slug === 'hilo') {
     return <HiloGame />;
   }

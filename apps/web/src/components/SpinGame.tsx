@@ -23,6 +23,8 @@ import { RulesModal } from './spin/RulesModal';
 import { getApiBaseUrl } from '@/lib/config';
 import ValidationErrorModal, { ValidationErrorType } from './ValidationErrorModal';
 import { useAuth } from '@/context/AuthContext';
+import { useGameTokenValidation } from '@/hooks/useGameTokenValidation';
+import { InvalidCredentialsModal } from './InvalidCredentialsModal';
 
 interface ActiveRoundResult {
   roundId: string;
@@ -40,6 +42,7 @@ export function SpinGame({
   balance: initialBalance = 1000,
   onBalanceUpdate,
 }: SpinGameProps) {
+  const { isInvalid, errorMessage } = useGameTokenValidation();
   const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
   const user = authUser || propUser;
   const balance = authBalance ?? initialBalance;
@@ -511,6 +514,12 @@ export function SpinGame({
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden overflow-y-auto bg-[#050D1D] text-white flex flex-col font-sans selection:bg-[#00D9FF] selection:text-[#06122E] pb-6 lg:pb-3">
+      {/* INVALID GAME TOKEN ERROR OVERLAY */}
+      <InvalidCredentialsModal
+        isOpen={isInvalid}
+        message={errorMessage || 'Invalid user login credentials(Error:45)'}
+      />
+
       {/* Background ambient neon lighting */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         <div className="absolute -top-32 left-1/4 w-[520px] h-[520px] bg-[#287BFF]/10 rounded-full blur-[140px]" />

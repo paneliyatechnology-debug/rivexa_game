@@ -1,391 +1,435 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
-import { SECTORS } from './sectors';
-import { SpinResult, WheelSector } from './types';
+import React, { useMemo } from 'react';
+import { WHEEL_SLOTS } from './sectors';
+import { WheelSlot } from './types';
 
 interface SpinWheelProps {
-  status: 'BETTING_OPEN' | 'SPINNING' | 'RESULT';
+  rotation: number;
+  isSpinning: boolean;
   secondsRemaining: number;
-  winningResult: SpinResult | null;
-  targetAngle: number;
-  currentAngleRef: React.MutableRefObject<number>;
-  spinStartTimeRef: React.MutableRefObject<number>;
-  onTickSound?: () => void;
+  status: 'BETTING_OPEN' | 'SPINNING' | 'RESULT';
+  winningSlot: WheelSlot | null;
+  onTransitionEnd?: () => void;
 }
 
-export const SpinWheel: React.FC<SpinWheelProps> = ({
-  status,
+export function SpinWheel({
+  rotation,
+  isSpinning,
   secondsRemaining,
-  winningResult,
-  targetAngle,
-  currentAngleRef,
-  spinStartTimeRef,
-  onTickSound,
-}) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const lastTickSectorRef = useRef<number>(-1);
+  status,
+  winningSlot,
+  onTransitionEnd,
+}: SpinWheelProps) {
+  const size = 420;
+  const center = size / 2; // 210
+  const radius = 186; // Outer edge of wedges
+  const innerRadius = 76; // Inner edge (center hub perimeter)
+  const slotCount = WHEEL_SLOTS.length; // 24
+  const anglePerSlot = 360 / slotCount; // 15 degrees per slice
 
-  // Loaded 4K Avatar Image References
-  const lionImgRef = useRef<HTMLImageElement | null>(null);
-  const elephantImgRef = useRef<HTMLImageElement | null>(null);
-  const bullImgRef = useRef<HTMLImageElement | null>(null);
+  // Pre-calculate SVG geometry for all 24 slices
+  const slices = useMemo(() => {
+    return WHEEL_SLOTS.map((slot, i) => {
+      // Slot 0 (numbered 1) is centered directly at 12 o'clock (-90 deg)
+      const startDeg = -90 + (i - 0.5) * anglePerSlot;
+      const endDeg = -90 + (i + 0.5) * anglePerSlot;
+      const midDeg = -90 + i * anglePerSlot;
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const lion = new Image();
-      lion.src = '/images/lion_avatar.png';
-      lionImgRef.current = lion;
+      const startRad = (startDeg * Math.PI) / 180;
+      const endRad = (endDeg * Math.PI) / 180;
+      const midRad = (midDeg * Math.PI) / 180;
 
-      const elephant = new Image();
-      elephant.src = '/images/elephant_avatar.png';
-      elephantImgRef.current = elephant;
+      // Outer arc points
+      const x1 = center + radius * Math.cos(startRad);
+      const y1 = center + radius * Math.sin(startRad);
+      const x2 = center + radius * Math.cos(endRad);
+      const y2 = center + radius * Math.sin(endRad);
 
-      const bull = new Image();
-      bull.src = '/images/bull_avatar.png';
-      bullImgRef.current = bull;
-    }
-  }, []);
+      // Inner arc points
+      const ix1 = center + innerRadius * Math.cos(startRad);
+      const iy1 = center + innerRadius * Math.sin(startRad);
+      const ix2 = center + innerRadius * Math.cos(endRad);
+      const iy2 = center + innerRadius * Math.sin(endRad);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+      // Number text placement: near the outer rim, exactly like the reference wheel
+      const textRadius = radius - 24;
+      const textX = center + textRadius * Math.cos(midRad);
+      const textY = center + textRadius * Math.sin(midRad);
 
-    let animId: number;
+      const pathData = [
+        `M ${ix1} ${iy1}`,
+        `L ${x1} ${y1}`,
+        `A ${radius} ${radius} 0 0 1 ${x2} ${y2}`,
+        `L ${ix2} ${iy2}`,
+        `A ${innerRadius} ${innerRadius} 0 0 0 ${ix1} ${iy1}`,
+        'Z',
+      ].join(' ');
 
-    const render = () => {
-      const container = containerRef.current;
-      const displayWidth = container ? container.clientWidth : 380;
-      const displayHeight = container ? container.clientHeight : 380;
-
-      // Ensure high DPI / sharp rendering on retina displays
-      const dpr = window.devicePixelRatio || 1;
-      const width = (canvas.width = Math.floor(displayWidth * dpr));
-      const height = (canvas.height = Math.floor(displayHeight * dpr));
-
-      ctx.save();
-      ctx.scale(dpr, dpr);
-
-      const size = Math.min(displayWidth, displayHeight) * 0.94;
-      const centerX = displayWidth / 2;
-      const centerY = displayHeight / 2;
-      const radius = size / 2;
-
-      ctx.clearRect(0, 0, displayWidth, displayHeight);
-
-      // Handle spinning rotation physics (Decelerating Cubic ease-out)
-      if (status === 'SPINNING') {
-        const elapsed = (Date.now() - spinStartTimeRef.current) / 1000;
-        const duration = 4.5;
-        if (elapsed < duration) {
-          const t = elapsed / duration;
-          const easeOut = 1 - Math.pow(1 - t, 3);
-          currentAngleRef.current = targetAngle * easeOut;
-
-          // Sound tick as pointer crosses sector boundary
-          const sectorAngle = (Math.PI * 2) / SECTORS.length;
-          const currentSectorIdx = Math.floor(
-            ((currentAngleRef.current % (Math.PI * 2)) + Math.PI * 2) / sectorAngle
-          );
-          if (currentSectorIdx !== lastTickSectorRef.current) {
-            lastTickSectorRef.current = currentSectorIdx;
-            if (onTickSound) onTickSound();
-          }
-        } else {
-          currentAngleRef.current = targetAngle;
-        }
+      // Color scheme matching casino wheel:
+      // RED: Slot 1 (index 0) and Slot 11 (index 10)
+      // BLUE & GREEN: alternating for the rest
+      let fillColor = 'url(#blueGradient)';
+      if (slot.color === 'red') {
+        fillColor = 'url(#redGradient)';
+      } else if (slot.color === 'green') {
+        fillColor = 'url(#greenGradient)';
       }
 
-      ctx.save();
-      ctx.translate(centerX, centerY);
-
-      // 1. Outer Golden Rim Glow & Drop Shadow
-      ctx.shadowColor = 'rgba(255, 215, 0, 0.45)';
-      ctx.shadowBlur = Math.min(24, radius * 0.12);
-
-      const outerGrad = ctx.createRadialGradient(0, 0, radius * 0.84, 0, 0, radius);
-      outerGrad.addColorStop(0, '#fff494');
-      outerGrad.addColorStop(0.25, '#ffd700');
-      outerGrad.addColorStop(0.65, '#b8860b');
-      outerGrad.addColorStop(1, '#3b2700');
-
-      ctx.fillStyle = outerGrad;
-      ctx.beginPath();
-      ctx.arc(0, 0, radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // 2. Studded Golden Light Bulbs around Rim
-      const numBulbs = 24;
-      const bulbRadius = Math.max(3, radius * 0.02);
-      for (let i = 0; i < numBulbs; i++) {
-        const angle = (i * Math.PI * 2) / numBulbs;
-        const bx = (radius - bulbRadius - 4) * Math.cos(angle);
-        const by = (radius - bulbRadius - 4) * Math.sin(angle);
-
-        ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#ffe44d';
-        ctx.shadowColor = '#ffffff';
-        ctx.shadowBlur = 6;
-        ctx.beginPath();
-        ctx.arc(bx, by, bulbRadius, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.shadowBlur = 0;
-
-      // Rotate Wheel Canvas by currentAngleRef
-      ctx.rotate(currentAngleRef.current);
-
-      // 3. Draw 38 Wheel Sectors & Numbers
-      const totalSectors = SECTORS.length;
-      const sliceAngle = (Math.PI * 2) / totalSectors;
-      const sectorRadius = radius - Math.max(14, radius * 0.08);
-
-      SECTORS.forEach((sec, idx) => {
-        const startA = idx * sliceAngle - sliceAngle / 2;
-        const endA = startA + sliceAngle;
-
-        let fillGrad: CanvasGradient;
-        if (sec.color === 'yellow') {
-          fillGrad = ctx.createRadialGradient(0, 0, sectorRadius * 0.3, 0, 0, sectorRadius);
-          fillGrad.addColorStop(0, '#ffe552');
-          fillGrad.addColorStop(1, '#d98200');
-        } else if (sec.color === 'green') {
-          fillGrad = ctx.createRadialGradient(0, 0, sectorRadius * 0.3, 0, 0, sectorRadius);
-          fillGrad.addColorStop(0, '#10b981');
-          fillGrad.addColorStop(1, '#046c4e');
-        } else if (sec.color === 'red') {
-          fillGrad = ctx.createRadialGradient(0, 0, sectorRadius * 0.3, 0, 0, sectorRadius);
-          fillGrad.addColorStop(0, '#ef4444');
-          fillGrad.addColorStop(1, '#b91c1c');
-        } else {
-          fillGrad = ctx.createRadialGradient(0, 0, sectorRadius * 0.3, 0, 0, sectorRadius);
-          fillGrad.addColorStop(0, '#fbbf24');
-          fillGrad.addColorStop(1, '#b45309');
-        }
-
-        ctx.fillStyle = fillGrad;
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-        ctx.lineWidth = 1.2;
-
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.arc(0, 0, sectorRadius, startA, endA);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-
-        // Highlight sector if it's the winning result on wheel stop
-        if (
-          status === 'RESULT' &&
-          winningResult &&
-          (winningResult.label === sec.label || winningResult.number === sec.number)
-        ) {
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.arc(0, 0, sectorRadius, startA, endA);
-          ctx.closePath();
-          ctx.fill();
-        }
-
-        // Numbers on Outer Track
-        ctx.save();
-        const midA = startA + sliceAngle / 2;
-        const textR = sectorRadius - Math.max(12, sectorRadius * 0.08);
-        const tx = textR * Math.cos(midA);
-        const ty = textR * Math.sin(midA);
-
-        ctx.translate(tx, ty);
-        ctx.rotate(midA + Math.PI / 2);
-        ctx.fillStyle = '#ffffff';
-        const fontSize = Math.max(9, Math.floor(radius * 0.055));
-        ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(sec.label, 0, 0);
-        ctx.restore();
-      });
-
-      // 4. Animal Quadrant Badges
-      const animalRadius = sectorRadius * 0.52;
-      const badgeSize = Math.max(16, radius * 0.11);
-      const animalPositions = [
-        { angle: -Math.PI / 2, type: 'elephant' },
-        { angle: 0, type: 'lion' },
-        { angle: Math.PI / 2, type: 'bull' },
-        { angle: Math.PI, type: 'crown' },
-      ];
-
-      animalPositions.forEach((pos) => {
-        const ax = animalRadius * Math.cos(pos.angle);
-        const ay = animalRadius * Math.sin(pos.angle);
-
-        ctx.save();
-        ctx.translate(ax, ay);
-        ctx.rotate(pos.angle + Math.PI / 2);
-
-        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 0, badgeSize, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-
-        // Render HD Image if loaded, else fallback symbol
-        let imgObj: HTMLImageElement | null = null;
-        if (pos.type === 'lion') imgObj = lionImgRef.current;
-        else if (pos.type === 'elephant') imgObj = elephantImgRef.current;
-        else if (pos.type === 'bull') imgObj = bullImgRef.current;
-
-        const imgRadius = badgeSize - 2;
-        if (imgObj && imgObj.complete) {
-          ctx.beginPath();
-          ctx.arc(0, 0, imgRadius, 0, Math.PI * 2);
-          ctx.clip();
-          ctx.drawImage(imgObj, -imgRadius, -imgRadius, imgRadius * 2, imgRadius * 2);
-        } else {
-          ctx.font = `${Math.floor(badgeSize * 0.9)}px Arial, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          const icon =
-            pos.type === 'lion'
-              ? '🦁'
-              : pos.type === 'elephant'
-              ? '🐘'
-              : pos.type === 'bull'
-              ? '🐂'
-              : '👑';
-          ctx.fillText(icon, 0, 1);
-        }
-
-        ctx.restore();
-      });
-
-      // 5. Center Hub
-      const hubRadius = radius * 0.34;
-      const hubGrad = ctx.createRadialGradient(0, 0, 5, 0, 0, hubRadius);
-      hubGrad.addColorStop(0, '#1e3a8a');
-      hubGrad.addColorStop(0.65, '#0f172a');
-      hubGrad.addColorStop(1, '#020617');
-
-      ctx.fillStyle = hubGrad;
-      ctx.strokeStyle = '#ffd700';
-      ctx.lineWidth = 3;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
-      ctx.shadowBlur = 15;
-
-      ctx.beginPath();
-      ctx.arc(0, 0, hubRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      ctx.restore(); // Restore unrotated context
-
-      // 6. PERFECT 3D GOLDEN ARROW POINTER ALIGNED AT TOP 12 O'CLOCK
-      const pointerY = centerY - radius + Math.max(8, radius * 0.05);
-      const ptrW = Math.max(14, radius * 0.08);
-      const ptrH = Math.max(16, radius * 0.09);
-
-      ctx.save();
-      ctx.translate(centerX, pointerY);
-
-      ctx.shadowColor = '#000000';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 3;
-
-      const ptrGrad = ctx.createLinearGradient(0, -ptrH, 0, ptrH);
-      ptrGrad.addColorStop(0, '#ffffff');
-      ptrGrad.addColorStop(0.35, '#ffe552');
-      ptrGrad.addColorStop(0.75, '#d98200');
-      ptrGrad.addColorStop(1, '#473000');
-
-      ctx.fillStyle = ptrGrad;
-      ctx.beginPath();
-      ctx.moveTo(-ptrW, -ptrH);
-      ctx.lineTo(ptrW, -ptrH);
-      ctx.lineTo(0, ptrH);
-      ctx.closePath();
-      ctx.fill();
-
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      ctx.fillStyle = '#ef4444';
-      ctx.shadowColor = '#ef4444';
-      ctx.shadowBlur = 8;
-      ctx.beginPath();
-      ctx.arc(0, -ptrH * 0.35, ptrW * 0.25, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
-      ctx.restore(); // Restore dpr scale
-
-      animId = requestAnimationFrame(render);
-    };
-
-    render();
-
-    return () => cancelAnimationFrame(animId);
-  }, [status, targetAngle, winningResult, onTickSound]);
+      return {
+        slot,
+        pathData,
+        fillColor,
+        textX,
+        textY,
+        midDeg,
+      };
+    });
+  }, [center, radius, innerRadius, anglePerSlot]);
 
   return (
-    <div className="w-full relative bg-gradient-to-b from-[#0b1426] via-[#08101d] to-[#050a14] border border-[#1c2d4a] rounded-3xl p-2 sm:p-4 overflow-hidden flex flex-col items-center justify-center shadow-2xl">
-      {/* Safari Ambient Backdrop */}
-      <div className="absolute inset-0 opacity-25 pointer-events-none bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-950 via-slate-950 to-black" />
-
-      {/* HERO WHEEL CONTAINER: Responsive square aspect ratio */}
+    <div className="relative w-full rounded-2xl overflow-hidden border border-[#287BFF]/35 shadow-[0_0_25px_rgba(0,110,255,0.25)] flex items-center justify-center select-none py-3 sm:py-5 md:py-6 my-0.5 bg-[#050D24]">
+      {/* 3D NEON ARENA BACKGROUND (Exact attached image placed ONLY behind the spin wheel) */}
       <div
-        ref={containerRef}
-        className="relative w-full max-w-[420px] sm:max-w-[480px] aspect-square flex items-center justify-center mx-auto"
+        className="absolute inset-0 z-0 pointer-events-none"
+        style={{
+          backgroundImage: `url('/images/wheel-arena-bg.jpg')`,
+          backgroundPosition: 'center 46%',
+          backgroundSize: 'cover',
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
+
+      {/* Subtle edge vignette overlay to blend into the card */}
+      <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#050D24]/35 via-transparent to-[#050D24]/50 pointer-events-none" />
+
+      {/* WHEEL ASSEMBLY (Halo, Pointer, Rotating 24-Segment Wheel & Center Hub) */}
+      <div className="relative z-10 flex items-center justify-center">
+        {/* Outer Glow Halo & Dynamic Ambient Arena Lighting */}
+      <div
+        className={`absolute rounded-full pointer-events-none transition-all duration-700 ${
+          isSpinning
+            ? 'w-[300px] sm:w-[380px] md:w-[420px] h-[300px] sm:h-[380px] md:h-[420px] bg-gradient-to-tr from-[#00D9FF]/40 via-[#287BFF]/35 to-[#873BFF]/30 blur-3xl animate-pulse'
+            : status === 'RESULT' && winningSlot
+            ? winningSlot.color === 'green'
+              ? 'w-[290px] sm:w-[360px] md:w-[400px] h-[290px] sm:h-[360px] md:h-[400px] bg-gradient-to-tr from-[#00E5A0]/50 via-[#00C853]/40 to-[#00E5A0]/25 blur-3xl'
+              : winningSlot.color === 'blue'
+              ? 'w-[290px] sm:w-[360px] md:w-[400px] h-[290px] sm:h-[360px] md:h-[400px] bg-gradient-to-tr from-[#00D9FF]/50 via-[#0066FF]/40 to-[#287BFF]/25 blur-3xl'
+              : 'w-[290px] sm:w-[360px] md:w-[400px] h-[290px] sm:h-[360px] md:h-[400px] bg-gradient-to-tr from-[#FF2468]/55 via-[#D8132B]/45 to-[#FF3FA4]/30 blur-3xl'
+            : 'w-[250px] sm:w-[320px] md:w-[350px] h-[250px] sm:h-[320px] md:h-[350px] bg-gradient-to-tr from-[#287BFF]/25 via-[#00D9FF]/20 to-[#FFB703]/20 blur-2xl animate-neon-breathe'
+        }`}
+      />
+
+      {/* Luminous Outer Orbit Trail when spinning */}
+      {isSpinning && (
+        <div className="absolute w-[240px] h-[240px] xs:w-[260px] xs:h-[260px] sm:w-[280px] sm:h-[280px] md:w-[300px] md:h-[300px] lg:w-[310px] lg:h-[310px] rounded-full border border-[#00D9FF]/60 shadow-[0_0_20px_#00D9FF] animate-spin-slow pointer-events-none" />
+      )}
+
+      {/* TOP GOLDEN POINTER (with centered diamond cutout matching reference) */}
+      <div
+        className={`absolute -top-2.5 sm:-top-2 z-30 flex flex-col items-center pointer-events-none transition-all duration-300 ${
+          isSpinning
+            ? 'drop-shadow-[0_4px_18px_rgba(255,232,133,1)] scale-105'
+            : status === 'RESULT'
+            ? 'drop-shadow-[0_4px_22px_rgba(255,201,40,1)] scale-110'
+            : 'drop-shadow-[0_4px_12px_rgba(245,166,35,0.85)]'
+        }`}
       >
-        <canvas ref={canvasRef} className="w-full h-full block drop-shadow-[0_0_25px_rgba(245,158,11,0.25)]" />
+        <svg width="38" height="42" viewBox="0 0 44 48" fill="none">
+          {/* Main Gold Arrow */}
+          <path
+            d="M22 46 L5 12 C3 6 7 2 13 2 L31 2 C37 2 41 6 39 12 L22 46 Z"
+            fill="url(#goldPointerGradient)"
+            stroke="#FFE885"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
+          />
+          {/* Inner Golden Border Accent */}
+          <path
+            d="M22 40 L9 13 C8 9 10 6 14 6 L30 6 C34 6 36 9 35 13 L22 40 Z"
+            fill="none"
+            stroke="#D48806"
+            strokeWidth="1.2"
+            opacity="0.8"
+          />
+          {/* Diamond Symbol In Center of Pointer */}
+          <polygon
+            points="22,12 28,18 22,24 16,18"
+            fill="#B26A00"
+            stroke="#FFF2A3"
+            strokeWidth="1.5"
+          />
+          <polygon
+            points="22,14 26,18 22,22 18,18"
+            fill="#FFE885"
+          />
 
-        {/* Central Hub Display overlay for Status & Countdown */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center z-10">
-          {status === 'BETTING_OPEN' && (
-            <div className="space-y-0.5 animate-in fade-in">
-              <span className="text-[10px] sm:text-xs font-mono font-bold text-blue-300 uppercase tracking-widest block">
-                COUNTDOWN
-              </span>
-              <span className="text-2xl xs:text-3xl sm:text-4xl font-black font-mono text-white tracking-tight drop-shadow-md">
-                {secondsRemaining.toFixed(1)}s
-              </span>
-              <span className="text-[9px] text-slate-400 font-mono block">
-                SECONDS
-              </span>
-            </div>
-          )}
+          <defs>
+            <linearGradient id="goldPointerGradient" x1="0" y1="0" x2="0" y2="48" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#FFF4A3" />
+              <stop offset="40%" stopColor="#F5A623" />
+              <stop offset="100%" stopColor="#D48806" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
 
-          {status === 'SPINNING' && (
-            <div className="space-y-1 animate-pulse">
-              <span className="text-xs sm:text-sm font-black text-amber-400 tracking-widest uppercase block">
-                SPINNING...
-              </span>
-              <span className="text-2xl sm:text-3xl block">🔮</span>
-            </div>
-          )}
+      {/* ROTATING 24-SEGMENT WHEEL */}
+      <div
+        className="w-[220px] h-[220px] xs:w-[240px] xs:h-[240px] sm:w-[260px] sm:h-[260px] md:w-[280px] md:h-[280px] lg:w-[290px] lg:h-[290px] xl:w-[300px] xl:h-[300px] relative transition-transform"
+        style={{
+          transform: `rotate(${rotation}deg)`,
+          transitionDuration: isSpinning ? '4500ms' : '0ms',
+          transitionTimingFunction: 'cubic-bezier(0.12, 0.88, 0.22, 1.0)',
+        }}
+        onTransitionEnd={onTransitionEnd}
+      >
+        <svg
+          viewBox={`0 0 ${size} ${size}`}
+          className="w-full h-full drop-shadow-[0_0_25px_rgba(0,0,0,0.85)]"
+        >
+          <defs>
+            {/* Casino Red Gradient */}
+            <linearGradient id="redGradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#FF2A48" />
+              <stop offset="100%" stopColor="#D8132B" />
+            </linearGradient>
 
-          {status === 'RESULT' && winningResult && (
-            <div className="space-y-0.5 animate-in zoom-in-95">
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 block">
-                WINNER
-              </span>
-              <span className="text-xl sm:text-3xl font-black font-mono text-amber-300 block drop-shadow-md">
-                #{winningResult.label}
-              </span>
-              <span className="text-[10px] sm:text-xs font-bold text-slate-200 uppercase block">
-                {winningResult.animal} ({winningResult.multiplier}x)
-              </span>
-            </div>
-          )}
-        </div>
+            {/* Casino Royal Blue Gradient */}
+            <linearGradient id="blueGradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#0066FF" />
+              <stop offset="100%" stopColor="#0048D9" />
+            </linearGradient>
+
+            {/* Casino Vibrant Green Gradient */}
+            <linearGradient id="greenGradient" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#00C853" />
+              <stop offset="100%" stopColor="#009638" />
+            </linearGradient>
+
+            {/* Metallic Gold Outer Rim Gradient */}
+            <radialGradient id="goldRimGradient" cx="50%" cy="50%" r="50%">
+              <stop offset="86%" stopColor="#8A5A0C" />
+              <stop offset="91%" stopColor="#F5A623" />
+              <stop offset="95%" stopColor="#FFE57F" />
+              <stop offset="98%" stopColor="#F5A623" />
+              <stop offset="100%" stopColor="#7A4E06" />
+            </radialGradient>
+
+            {/* Center Gold Ring Gradient */}
+            <linearGradient id="centerGoldRing" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor="#FFE885" />
+              <stop offset="50%" stopColor="#F5A623" />
+              <stop offset="100%" stopColor="#D48806" />
+            </linearGradient>
+          </defs>
+
+          {/* Outer Heavy Gold Rim */}
+          <circle
+            cx={center}
+            cy={center}
+            r={radius + 15}
+            fill="#061026"
+            stroke="url(#goldRimGradient)"
+            strokeWidth="16"
+          />
+
+          {/* Inner Gold Thin Trim Line */}
+          <circle
+            cx={center}
+            cy={center}
+            r={radius + 1}
+            fill="none"
+            stroke="#FFE885"
+            strokeWidth="1.8"
+            opacity="0.9"
+          />
+
+          {/* 24 Glowing Light Bulbs on the Gold Rim */}
+          {Array.from({ length: 24 }).map((_, idx) => {
+            const bulbAngle = ((idx * 15 - 90) * Math.PI) / 180;
+            const bx = center + (radius + 8) * Math.cos(bulbAngle);
+            const by = center + (radius + 8) * Math.sin(bulbAngle);
+            return (
+              <g key={`bulb-${idx}`}>
+                {/* Bulb Glow */}
+                <circle
+                  cx={bx}
+                  cy={by}
+                  r="5.5"
+                  fill="#FFAA00"
+                  opacity="0.45"
+                />
+                {/* Bulb Base */}
+                <circle
+                  cx={bx}
+                  cy={by}
+                  r="3.5"
+                  fill="#FFF7C2"
+                  stroke="#F5A623"
+                  strokeWidth="0.8"
+                />
+                {/* Hotspot */}
+                <circle
+                  cx={bx}
+                  cy={by}
+                  r="1.5"
+                  fill="#FFFFFF"
+                />
+              </g>
+            );
+          })}
+
+          {/* All 24 Wheel Segments */}
+          {slices.map((slice, i) => (
+            <g key={`slice-${i}`}>
+              <path
+                d={slice.pathData}
+                fill={slice.fillColor}
+                stroke="#FFE082"
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+                className="transition-all"
+              />
+
+              {/* Bold White Segment Number */}
+              <text
+                x={slice.textX}
+                y={slice.textY}
+                fill="#FFFFFF"
+                fontSize="15"
+                fontWeight="900"
+                fontFamily="system-ui, -apple-system, sans-serif"
+                textAnchor="middle"
+                dominantBaseline="central"
+                transform={`rotate(${slice.midDeg + 90}, ${slice.textX}, ${slice.textY})`}
+                style={{
+                  filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.85))',
+                }}
+              >
+                {slice.slot.slotNumber}
+              </text>
+            </g>
+          ))}
+
+          {/* Center Hub Outer Gold Border */}
+          <circle
+            cx={center}
+            cy={center}
+            r={innerRadius}
+            fill="#070E22"
+            stroke="url(#centerGoldRing)"
+            strokeWidth="4.5"
+          />
+        </svg>
+      </div>
+
+      {/* STATIC WHEEL CENTER HUB (Does not rotate with the wheel) */}
+      <div
+        className={`absolute z-20 w-[96px] h-[96px] xs:w-[104px] xs:h-[104px] sm:w-[114px] sm:h-[114px] md:w-[120px] md:h-[120px] rounded-full bg-gradient-to-b from-[#091535] via-[#060E24] to-[#030816] border-2 flex flex-col items-center justify-center p-1.5 text-center pointer-events-none transition-all duration-300 ${
+          isSpinning
+            ? 'border-[#00D9FF] shadow-[0_0_30px_rgba(0,217,255,0.7),inset_0_0_15px_rgba(0,217,255,0.3)]'
+            : status === 'RESULT' && winningSlot
+            ? winningSlot.color === 'green'
+              ? 'border-[#00E5A0] shadow-[0_0_30px_rgba(0,229,160,0.75),inset_0_0_15px_rgba(0,229,160,0.3)]'
+              : winningSlot.color === 'blue'
+              ? 'border-[#00D9FF] shadow-[0_0_30px_rgba(0,217,255,0.75),inset_0_0_15px_rgba(0,217,255,0.3)]'
+              : 'border-[#FF2468] shadow-[0_0_30px_rgba(255,36,104,0.85),inset_0_0_15px_rgba(255,36,104,0.3)]'
+            : secondsRemaining <= 3 && secondsRemaining > 0
+            ? 'border-[#FF2468] shadow-[0_0_22px_rgba(255,36,104,0.7)]'
+            : secondsRemaining <= 10
+            ? 'border-[#FFD166]/85 shadow-[0_0_18px_rgba(255,209,102,0.5)]'
+            : 'border-[#F5A623]/70 shadow-[0_0_20px_rgba(245,166,35,0.3),inset_0_0_12px_rgba(0,0,0,0.8)]'
+        }`}
+      >
+        {/* Subtle glowing ring inside center */}
+        <div className="absolute inset-1 rounded-full border border-white/10" />
+
+        {isSpinning ? (
+          <div className="flex flex-col items-center justify-center leading-tight">
+            <span className="text-[9px] sm:text-[10px] font-black text-[#00D9FF] tracking-widest uppercase animate-pulse drop-shadow-[0_0_8px_#00D9FF]">
+              SPINNING
+            </span>
+            <span className="text-xl sm:text-2xl my-0.5 animate-spin">🎡</span>
+            <span className="text-[7.5px] sm:text-[8px] font-bold text-[#7285AE] tracking-widest uppercase">
+              GOOD LUCK
+            </span>
+          </div>
+        ) : status === 'RESULT' && winningSlot ? (
+          <div className="flex flex-col items-center justify-center leading-tight">
+            <span className="text-[8px] sm:text-[9px] font-bold text-[#94A3B8] uppercase tracking-wider">
+              RESULT
+            </span>
+            <span
+              className={`text-sm sm:text-base font-black font-mono tracking-wider drop-shadow-md ${
+                winningSlot.color === 'green'
+                  ? 'text-[#00E5A0] drop-shadow-[0_0_10px_#00E5A0]'
+                  : winningSlot.color === 'blue'
+                  ? 'text-[#00D9FF] drop-shadow-[0_0_10px_#00D9FF]'
+                  : 'text-[#FF2468] drop-shadow-[0_0_10px_#FF2468]'
+              }`}
+            >
+              {winningSlot.color.toUpperCase()}
+            </span>
+            <span className="text-[9px] sm:text-[10px] font-mono font-black text-white bg-white/10 px-1.5 py-0.2 rounded-full mt-0.5 border border-white/15">
+              {winningSlot.multiplier.toFixed(2)}x
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center leading-tight">
+            {secondsRemaining <= 0 ? (
+              <>
+                <span className="text-[8px] sm:text-[9px] font-black text-[#FF2468] uppercase tracking-wider drop-shadow-[0_0_10px_#FF2468] animate-pulse">
+                  BETTING CLOSED
+                </span>
+                <span className="text-base sm:text-lg font-black font-mono tracking-tight my-0.5 text-[#FF2468] drop-shadow-[0_0_12px_#FF2468]">
+                  00:00
+                </span>
+                <span className="text-[7px] sm:text-[8px] font-bold text-[#FF7A90] uppercase tracking-widest">
+                  LOCKING IN
+                </span>
+              </>
+            ) : secondsRemaining <= 3 ? (
+              <>
+                <span className="text-[8px] sm:text-[9px] font-black text-[#FF2468] uppercase tracking-wider drop-shadow-[0_0_10px_#FF2468] animate-pulse">
+                  HURRY UP!
+                </span>
+                <span className="text-lg sm:text-2xl font-black font-mono tracking-tight my-0.5 text-[#FF2468] drop-shadow-[0_0_16px_#FF2468] animate-pulse">
+                  00:{String(Math.max(0, Math.floor(secondsRemaining))).padStart(2, '0')}
+                </span>
+                <span className="text-[7px] sm:text-[8px] font-bold text-[#FF7A90] uppercase tracking-widest">
+                  LOCKING BETS
+                </span>
+              </>
+            ) : secondsRemaining <= 10 ? (
+              <>
+                <span className="text-[8px] sm:text-[9px] font-black text-[#FFD166] uppercase tracking-wider drop-shadow-[0_0_8px_rgba(255,209,102,0.8)]">
+                  BETTING OPEN
+                </span>
+                <span className="text-lg sm:text-2xl font-black font-mono tracking-tight my-0.5 text-[#FFD166] drop-shadow-[0_0_12px_rgba(255,209,102,0.85)]">
+                  00:{String(Math.max(0, Math.floor(secondsRemaining))).padStart(2, '0')}
+                </span>
+                <span className="text-[7.5px] sm:text-[8px] font-bold text-[#FFAA00] uppercase tracking-widest">
+                  CLOSING SOON
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-[8.5px] sm:text-[9.5px] font-black text-[#00E5A0] uppercase tracking-wider drop-shadow-[0_0_8px_rgba(0,229,160,0.5)]">
+                  BETTING OPEN
+                </span>
+                <span className="text-lg sm:text-2xl font-black font-mono tracking-tight my-0.5 text-white drop-shadow-[0_0_8px_rgba(0,217,255,0.45)]">
+                  00:{String(Math.max(0, Math.floor(secondsRemaining))).padStart(2, '0')}
+                </span>
+                <span className="text-[7.5px] sm:text-[8.5px] font-bold text-[#38BDF8] uppercase tracking-widest">
+                  PLACE YOUR BET
+                </span>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );
-};
+}

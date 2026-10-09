@@ -34,6 +34,13 @@
   --white-15: rgba(255, 255, 255, 0.15);
 }
 
+html,
+body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   background-color: #050B20;
   background-image: 
@@ -46,7 +53,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
 }
 
 input, select, textarea, button {
@@ -264,3 +270,50 @@ input[type='number'] {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* Spin & Win Neon Lighting & Particle Keyframes */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes spinSlowReverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes neonBreathe {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.05); }
+}
+
+@keyframes floatParticle1 {
+  0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.25; }
+  50% { transform: translateY(-20px) translateX(12px); opacity: 0.85; }
+}
+
+@keyframes floatParticle2 {
+  0%, 100% { transform: translateY(0px) translateX(0px); opacity: 0.3; }
+  50% { transform: translateY(-28px) translateX(-15px); opacity: 0.9; }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 24s linear infinite;
+}
+
+.animate-spin-slow-reverse {
+  animation: spinSlowReverse 30s linear infinite;
+}
+
+.animate-neon-breathe {
+  animation: neonBreathe 4s ease-in-out infinite;
+}
+
+.animate-particle-1 {
+  animation: floatParticle1 6s ease-in-out infinite;
+}
+
+.animate-particle-2 {
+  animation: floatParticle2 8s ease-in-out infinite;
+}
+

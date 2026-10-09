@@ -1,5 +1,5 @@
-export type AnimalType = 'lion' | 'elephant' | 'bull' | 'crown';
-export type SectorColor = 'yellow' | 'green' | 'red' | 'gold';
+export type SpinColor = 'green' | 'blue' | 'red';
+export type WheelSlotColor = 'green' | 'blue' | 'red';
 
 export interface SpinGameProps {
   user?: { id: string; email: string } | null;
@@ -7,50 +7,43 @@ export interface SpinGameProps {
   onBalanceUpdate?: () => void;
 }
 
-export interface WheelSector {
-  number: number;
-  color: SectorColor;
-  animal: AnimalType;
-  label: string;
+export interface WheelSlot {
+  index: number;
+  slotNumber: number;
+  color: SpinColor;
   multiplier: number;
+  label: string;
 }
 
-export interface SpinResult {
+export interface SpinHistoryItem {
+  id: string;
+  index?: number;
+  roundId: string;
+  time: string;
+  choice: string;
+  result: string;
+  multiplier: number;
+  betAmount: number;
+  payoutAmount: number;
+  profitLoss: number;
+  status: 'WON' | 'LOST' | 'PENDING';
+}
+
+export interface RecentSpin {
   periodNumber: string;
-  number: number;
-  label?: string;
-  color: SectorColor;
-  animal: AnimalType;
+  resultColor: string;
   multiplier: number;
   timestamp?: number;
-}
-
-export interface UserBet {
-  id: string;
-  periodNumber: string;
-  betType: 'color' | 'number';
-  option: string; // 'yellow', 'green', 'red', 'gold', or number label ('0'-'36', '00')
-  amount: number;
-  payout: number;
-  status: 'pending' | 'won' | 'lost';
-  landedSector?: string;
-  createdAt: number;
-}
-
-export interface LivePlayerBet {
-  username: string;
-  option: string;
-  amount: number;
-  status: 'pending' | 'won' | 'lost';
-  payout: number;
 }
 
 export interface ResultModalData {
   isOpen: boolean;
   isWin: boolean;
-  sector: WheelSector;
+  choice: string;
+  result: string;
+  multiplier: number;
   betAmount: number;
-  payout: number;
-  betOption: string;
-  periodNumber: string;
+  payoutAmount: number;
+  profitLoss: number;
+  roundId: string;
 }

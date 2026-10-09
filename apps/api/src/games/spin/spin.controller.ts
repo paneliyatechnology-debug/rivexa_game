@@ -11,8 +11,12 @@ export class SpinController {
   }
 
   @Get('history')
-  async getHistory() {
-    return this.spinService.getHistory();
+  async getHistory(
+    @Query('userId') userId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.spinService.getHistory(userId, Number(page) || 1, Number(limit) || 10);
   }
 
   @Post('spin')
@@ -22,6 +26,16 @@ export class SpinController {
     @Body('betAmount') betAmount: number,
     @Body('periodNumber') periodNumber?: string,
   ) {
-    return this.spinService.spin(userId, selectedColor, betAmount, periodNumber);
+    return this.spinService.placeBet(userId, selectedColor, betAmount, periodNumber);
+  }
+
+  @Post('bet')
+  async placeBet(
+    @Body('userId') userId: string,
+    @Body('selectedColor') selectedColor: string,
+    @Body('betAmount') betAmount: number,
+    @Body('periodNumber') periodNumber?: string,
+  ) {
+    return this.spinService.placeBet(userId, selectedColor, betAmount, periodNumber);
   }
 }

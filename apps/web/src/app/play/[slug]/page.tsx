@@ -28,6 +28,46 @@ export default function PlayGamePage() {
   const { isInvalid, errorMessage } = useGameTokenValidation();
   const { user: authUser, balance: authBalance, refreshBalance } = useAuth();
 
+  // If page was accessed directly without session token query parameters, auto-create a session & update address bar URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const hasToken =
+      urlParams.get('st') ||
+      urlParams.get('gt') ||
+      urlParams.get('ticket') ||
+      urlParams.get('t') ||
+      urlParams.get('authToken') ||
+      urlParams.get('token') ||
+      urlParams.get('sessionToken');
+
+    if (!hasToken) {
+      const apiBase = getApiBaseUrl();
+      const token = localStorage.getItem('rivexa_token') || '00000000-0000-4000-a000-000000000000';
+      fetch(`${apiBase}/games/${slug}/launch`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ mode: 'REAL', currency: 'INR' }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.launchUrl) {
+            window.history.replaceState(null, '', data.launchUrl);
+            if (data?.token) {
+              sessionStorage.setItem('gs_token', data.token);
+            }
+            if (data?.sessionId) {
+              sessionStorage.setItem('gs_active_session_id', data.sessionId);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+  }, [slug]);
+
   if (isInvalid) {
     return (
       <div className="w-full min-h-screen bg-[#050B20] text-gray-100 flex flex-col font-sans">

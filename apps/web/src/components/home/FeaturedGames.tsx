@@ -180,14 +180,6 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
   const handleGameCardClick = async (e: React.MouseEvent, gameSlug: string) => {
     e.preventDefault();
 
-    // If not logged in, allow guest preview by navigating directly to game page
-    if (!isAuthenticated) {
-      if (typeof window !== 'undefined') {
-        window.location.href = `/play/${gameSlug}`;
-      }
-      return;
-    }
-
     setLaunchingSlug(gameSlug);
     try {
       const result = await launchGame(gameSlug, 'REAL', 'INR');

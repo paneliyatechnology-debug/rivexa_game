@@ -9,6 +9,8 @@ interface ChickenRoadStore {
   status: GameStatus;
   difficulty: DifficultySlug;
   betAmount: number;
+  minBet: number;
+  maxBet: number;
   currency: string;
   checkpoint: number;
   multiplier: number;
@@ -30,6 +32,7 @@ interface ChickenRoadStore {
   activeModal: 'none' | 'history' | 'fairness' | 'help' | 'settings' | 'menu';
   selectedFairnessRoundId: string | null;
   soundEnabled: boolean;
+  playCooldown: number;
 
   // Actions
   setBetAmount: (amount: number) => void;
@@ -38,6 +41,7 @@ interface ChickenRoadStore {
   toggleSound: () => void;
   openModal: (modal: 'history' | 'fairness' | 'help' | 'settings' | 'menu', roundId?: string) => void;
   closeModal: () => void;
+  startCooldown: (seconds?: number) => void;
 
   // Game Lifecycle actions
   initRound: (data: {
@@ -76,12 +80,16 @@ interface ChickenRoadStore {
   resetGame: () => void;
 }
 
+let cooldownTimerId: any = null;
+
 export const useChickenRoadStore = create<ChickenRoadStore>((set, get) => ({
   roundId: null,
   publicId: null,
   status: 'IDLE',
   difficulty: 'easy',
   betAmount: 10,
+  minBet: 10,
+  maxBet: 100000,
   currency: 'INR',
   checkpoint: 0,
   multiplier: 1.00,
@@ -100,9 +108,27 @@ export const useChickenRoadStore = create<ChickenRoadStore>((set, get) => ({
   activeModal: 'none',
   selectedFairnessRoundId: null,
   soundEnabled: true,
+  playCooldown: 0,
+
+  startCooldown: (seconds = 5) => {
+    if (cooldownTimerId) clearInterval(cooldownTimerId);
+    set({ playCooldown: seconds });
+    cooldownTimerId = setInterval(() => {
+      const cur = get().playCooldown;
+      if (cur <= 1) {
+        clearInterval(cooldownTimerId);
+        cooldownTimerId = null;
+        set({ playCooldown: 0 });
+      } else {
+        set({ playCooldown: cur - 1 });
+      }
+    }, 1000);
+  },
 
   setBetAmount: (amount: number) => {
-    const valid = Math.max(1, Math.min(100000, amount));
+    const min = get().minBet || 10;
+    const max = get().maxBet || 100000;
+    const valid = Math.max(min, Math.min(max, amount));
     set({ betAmount: valid, potentialPayout: valid * get().multiplier });
   },
 
@@ -162,6 +188,7 @@ export const useChickenRoadStore = create<ChickenRoadStore>((set, get) => ({
 
   onRoundCrashed: (data) => {
     audioManager.playCrash();
+    get().startCooldown(5);
     set((state) => ({
       status: 'CRASHED',
       result: 'LOSS',
@@ -173,10 +200,15 @@ export const useChickenRoadStore = create<ChickenRoadStore>((set, get) => ({
         { checkpointNumber: data.checkpoint, multiplier: data.multiplier, result: 'CRASH' },
       ],
     }));
+
+    setTimeout(() => {
+      get().resetGame();
+    }, 2500);
   },
 
   onRoundCashedOut: (data) => {
     audioManager.playCashout();
+    get().startCooldown(5);
     set((state) => {
       const payout = Number(data.payout || 0);
       const newBal = Number((state.walletBalance + payout).toFixed(2));
@@ -189,6 +221,10 @@ export const useChickenRoadStore = create<ChickenRoadStore>((set, get) => ({
         walletBalance: newBal,
       };
     });
+
+    setTimeout(() => {
+      get().resetGame();
+    }, 2500);
   },
 
   resetGame: () => {

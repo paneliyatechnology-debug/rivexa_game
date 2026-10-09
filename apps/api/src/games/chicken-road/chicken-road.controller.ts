@@ -32,10 +32,11 @@ export class ChickenRoadController {
   constructor(private readonly chickenRoadService: ChickenRoadService) {}
 
   @Get('config')
-  getConfig() {
+  async getConfig() {
+    const configData = await this.chickenRoadService.getGameConfig();
     return {
       success: true,
-      data: this.chickenRoadService.getGameConfig(),
+      data: configData,
     };
   }
 

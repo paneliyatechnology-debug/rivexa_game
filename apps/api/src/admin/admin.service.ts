@@ -1258,9 +1258,13 @@ export class AdminService {
       if (parsedMax !== undefined) game.maxBet = parsedMax;
 
       try {
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+        const slugsToMatch = Array.from(new Set([cleanId, cleanId.replace(/-/g, ''), cleanId.replace(/_/g, '')]));
         const existingGame = await this.db.game.findFirst({
-          where: isUuid ? { OR: [{ slug: cleanId }, { id: cleanId }] } : { slug: cleanId },
+          where: {
+            OR: [
+              { slug: { in: slugsToMatch } },
+            ],
+          },
         });
 
         if (existingGame) {
@@ -1276,7 +1280,7 @@ export class AdminService {
           await this.db.game.create({
             data: {
               slug: cleanId,
-              name: game.name,
+              name: game.name || cleanId,
               category: 'arcade',
               engine: 'phaser3',
               rtpPercentage: game.rtpPercentage,
@@ -1297,9 +1301,11 @@ export class AdminService {
   async getGameConfig(gameId: string) {
     const cleanId = (gameId || '').toLowerCase().trim();
     try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+      const slugsToMatch = Array.from(new Set([cleanId, cleanId.replace(/-/g, ''), cleanId.replace(/_/g, '')]));
       const dbGame = await this.db.game.findFirst({
-        where: isUuid ? { OR: [{ slug: cleanId }, { id: cleanId }] } : { slug: cleanId },
+        where: {
+          slug: { in: slugsToMatch },
+        },
       });
       if (dbGame) {
         const catMatch = this.gamesCatalog.find((g) => g.id.toLowerCase() === cleanId || g.slug.toLowerCase() === cleanId);
@@ -2515,7 +2521,132 @@ export class AdminService {
       };
     }
 
-    if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
+    if (cleanId === 'chicken-road' || cleanId === 'chickenroad') {
+      let chickenTotalStakes = 0;
+      let chickenTotalPayouts = 0;
+      let activePlayersCount = 0;
+      try {
+        const stakesRes = await this.db.chickenRoadRound.aggregate({ _sum: { betAmount: true } }).catch(() => ({ _sum: { betAmount: 0 } }));
+        chickenTotalStakes = Number(stakesRes?._sum?.betAmount || 0);
+
+        const payoutsRes = await this.db.chickenRoadResult.aggregate({ _sum: { grossPayout: true } }).catch(() => ({ _sum: { grossPayout: 0 } }));
+        chickenTotalPayouts = Number(payoutsRes?._sum?.grossPayout || 0);
+        if (chickenTotalPayouts === 0) {
+          const cashedOutRounds = await this.db.chickenRoadRound.findMany({
+            where: { OR: [{ status: 'CASHED_OUT' }, { result: 'CASHOUT' }, { result: 'WIN' }] },
+            select: { betAmount: true, currentMultiplier: true, potentialPayout: true },
+          }).catch(() => []);
+          chickenTotalPayouts = cashedOutRounds.reduce((acc: number, r: any) => {
+            const mult = Number(r.currentMultiplier || 1.0);
+            const bet = Number(r.betAmount || 0);
+            const p = Number(r.potentialPayout || (bet * mult));
+            return acc + (p > 0 ? p : bet * mult);
+          }, 0);
+        }
+
+        activePlayersCount = await this.db.chickenRoadRound.count({
+          where: { status: { in: ['IN_PROGRESS', 'ACTIVE'] } },
+        }).catch(() => 0);
+
+        const activeRounds = await this.db.chickenRoadRound.findMany({
+          where: { status: { in: ['IN_PROGRESS', 'ACTIVE'] } },
+          include: { user: { select: { email: true, phone: true } } },
+          orderBy: { updatedAt: 'desc' },
+          take: 30,
+        }).catch(() => []);
+
+        if (activeRounds && activeRounds.length > 0) {
+          activeBetsList = activeRounds.map((r: any) => {
+            const amt = Number(r.betAmount || 0);
+            const mult = Number(r.currentMultiplier || 1.0);
+            const pot = Number(r.potentialPayout || (amt * mult));
+            return {
+              id: r.id,
+              userEmail: r.user?.email || r.user?.phone || 'Rivexa Player',
+              betAmount: amt,
+              amount: amt,
+              difficulty: (r.difficulty || 'EASY').toUpperCase(),
+              checkpoint: r.currentCheckpoint || 0,
+              multiplier: mult,
+              potentialWin: pot,
+              status: r.status,
+              time: new Date(r.createdAt).toTimeString().split(' ')[0],
+            };
+          });
+        }
+
+        const recentDbRounds = await this.db.chickenRoadRound.findMany({
+          where: { status: { in: ['CASHED_OUT', 'CRASHED', 'LOST', 'WON', 'COMPLETED'] } },
+          include: { user: { select: { email: true, phone: true } } },
+          orderBy: { updatedAt: 'desc' },
+          take: 20,
+        }).catch(() => []);
+
+        if (recentDbRounds && recentDbRounds.length > 0) {
+          settledPeriods = recentDbRounds.map((r: any) => {
+            const rTime = new Date(r.updatedAt || r.createdAt);
+            const timeStr = rTime.toTimeString().split(' ')[0] + `, ${rTime.toLocaleString('en-US', { month: 'short' })} ${rTime.getDate()}`;
+            const isWin = r.status === 'CASHED_OUT' || r.result === 'WIN' || r.result === 'CASHOUT';
+            const multStr = Number(r.currentMultiplier || 1.0).toFixed(2);
+            return {
+              id: r.id,
+              period: `#${r.id.slice(0, 8).toUpperCase()}`,
+              userEmail: r.user?.email || r.user?.phone || 'Rivexa Player',
+              difficulty: (r.difficulty || 'EASY').toUpperCase(),
+              checkpoint: r.currentCheckpoint || 0,
+              betAmount: Number(r.betAmount || 0),
+              payoutAmount: isWin ? Number(r.potentialPayout || (r.betAmount * r.currentMultiplier)) : 0,
+              winningNumber: `${multStr}x`,
+              colors: isWin ? 'GREEN' : 'RED',
+              status: isWin ? 'CASHOUT (WON)' : 'CRASHED (LOST)',
+              override: activeOverride ? `FORCED (${activeOverride})` : 'AUTO RTP',
+              time: timeStr,
+            };
+          });
+        }
+      } catch (e) {}
+
+      const houseNetProfit = chickenTotalStakes - chickenTotalPayouts;
+
+      return {
+        gameId: cleanId,
+        gameName: game.name,
+        rtpPercentage: Number(game.rtpPercentage),
+        minBet: Number(game.minBet),
+        maxBet: Number(game.maxBet),
+        isActive: game.isActive !== false,
+        todayStakes: chickenTotalStakes,
+        todayPayouts: chickenTotalPayouts,
+        houseNetProfit,
+        activeRtp: Number(game.rtpPercentage),
+        activePlayers: activePlayersCount,
+        currentRound: {
+          periodNumber: '#CHICKEN_ROAD_ENGINE',
+          status: activePlayersCount > 0 ? `LIVE CHICKEN ROAD RUNNING (${activePlayersCount} Active Bettors)` : 'CHICKEN ROAD ENGINE READY',
+          openCard: '🐥',
+          activeOverride: activeOverride ? `FORCED TARGET ACTIVE: ${activeOverride}` : 'AUTOMATIC RTP ALGORITHM ACTIVE',
+          projectedNumber: activeOverride ? `${activeOverride}` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          projectedColor: 'GOLD',
+          projectedLabel: activeOverride ? `FORCED TARGET (${activeOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          activeBetsSummary: {
+            totalStaked: activeBetsList.reduce((acc, b) => acc + (b.amount || 0), 0),
+            totalBetsCount: activeBetsList.length,
+          },
+          activeBetsList,
+        },
+        nextRound: {
+          periodNumber: '#NEXT_CHICKEN_ROAD_STEP',
+          projectedNumber: activeOverride ? `${activeOverride}` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          projectedColor: 'GOLD',
+          projectedLabel: activeOverride ? `FORCED TARGET (${activeOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          isOverride: !!activeOverride,
+        },
+        nextOverride: activeOverride || '',
+        settledPeriods,
+      };
+    }
+
+    if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
       let crashTotalStakes = 0;
       let crashTotalPayouts = 0;
       try {
@@ -2734,6 +2865,11 @@ export class AdminService {
         await this.db.crashBet.deleteMany({}).catch(() => {});
         await this.db.crashRound.deleteMany({}).catch(() => {});
         await this.db.parityBet.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadAction.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadCheckpoint.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadResult.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadAuditLog.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadRound.deleteMany({}).catch(() => {});
       } catch (err: any) {
         console.error('Error resetting all games history:', err?.message || err);
       }
@@ -2760,6 +2896,18 @@ export class AdminService {
     } else if (cleanId === 'fast-parity' || cleanId === 'parity') {
       await this.db.parityBet.deleteMany({});
       return { success: true, message: 'Parity bet history has been reset to 0.' };
+    } else if (cleanId === 'chicken-road' || cleanId === 'chickenroad') {
+      try {
+        await this.db.chickenRoadAction.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadCheckpoint.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadResult.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadAuditLog.deleteMany({}).catch(() => {});
+        await this.db.chickenRoadRound.deleteMany({}).catch(() => {});
+      } catch (err: any) {
+        console.error('Error resetting Chicken Road history:', err?.message || err);
+        return { success: false, message: `Failed to reset Chicken Road history: ${err?.message || err}` };
+      }
+      return { success: true, message: 'Chicken Road 2 bet history and revenue have been reset to ₹0.00.' };
     }
 
     return { success: false, message: `Unsupported game ID: ${cleanId}` };

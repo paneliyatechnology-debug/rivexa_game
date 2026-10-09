@@ -53,22 +53,9 @@ function timeAgo(dateStr: string): string {
   return `${Math.floor(diffHrs / 24)}d ago`;
 }
 
-const MOCK_ACTIVITIES: ActivityRecord[] = [
-  { id: '1', gameName: 'Fast Parity', userId: 'EB98CFD', betAmount: 100, result: 'won', winAmount: 180, createdAt: new Date(Date.now() - 120000).toISOString() },
-  { id: '2', gameName: 'Crash', userId: 'A41D6941', betAmount: 50, result: 'lost', winAmount: 0, createdAt: new Date(Date.now() - 300000).toISOString() },
-  { id: '3', gameName: 'Mines', userId: 'D09FA1FA', betAmount: 100, result: 'won', winAmount: 160, createdAt: new Date(Date.now() - 480000).toISOString() },
-  { id: '4', gameName: 'JetX Flight', userId: 'FFA3CB02', betAmount: 50, result: 'won', winAmount: 120, createdAt: new Date(Date.now() - 720000).toISOString() },
-];
-
-const MOCK_TOP_WINNERS: TopWinner[] = [
-  { username: 'Rohit***', amount: 12450 },
-  { username: 'Lucky***', amount: 8760 },
-  { username: 'Game***', amount: 6320 },
-];
-
 export function RecentActivity() {
-  const [activities, setActivities] = useState<ActivityRecord[]>(MOCK_ACTIVITIES);
-  const [topWinners, setTopWinners] = useState<TopWinner[]>(MOCK_TOP_WINNERS);
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
+  const [topWinners, setTopWinners] = useState<TopWinner[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -76,23 +63,25 @@ export function RecentActivity() {
       try {
         const apiUrl = getApiBaseUrl();
         const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
-        if (!token) return;
+
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
 
         const [actRes, winnersRes] = await Promise.all([
-          fetch(`${apiUrl}/bets/recent?limit=5`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
-          fetch(`${apiUrl}/bets/top-winners?limit=3`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null),
+          fetch(`${apiUrl}/bets/recent?limit=5`, { headers }).catch(() => null),
+          fetch(`${apiUrl}/bets/top-winners?limit=3`, { headers }).catch(() => null),
         ]);
 
         if (actRes?.ok) {
           const data = await actRes.json();
-          if (Array.isArray(data) && data.length > 0) setActivities(data);
+          if (Array.isArray(data)) setActivities(data);
         }
         if (winnersRes?.ok) {
           const data = await winnersRes.json();
-          if (Array.isArray(data) && data.length > 0) setTopWinners(data);
+          if (Array.isArray(data)) setTopWinners(data);
         }
       } catch (e) {
-        // Keep mock data if API fails
+        // Clear activity list on error
       } finally {
         setLoading(false);
       }
@@ -132,36 +121,42 @@ export function RecentActivity() {
         </div>
 
         <div className="divide-y divide-white/5">
-          {activities.map((act, i) => (
-            <motion.div
-              key={act.id}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.07 }}
-              className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors"
-            >
-              <div className="w-9 h-9 shrink-0 rounded-full bg-[#101C3A] border border-white/10 flex items-center justify-center text-base">
-                {GAME_ICONS[act.gameName?.toLowerCase().replace(/\s/g, '-')] || '🎮'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold text-white truncate">{act.gameName}</span>
+          {activities.length === 0 ? (
+            <div className="p-6 text-center text-xs font-bold text-[#7285AE]">
+              No recent bets recorded yet.
+            </div>
+          ) : (
+            activities.map((act, i) => (
+              <motion.div
+                key={act.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.07 }}
+                className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors"
+              >
+                <div className="w-9 h-9 shrink-0 rounded-full bg-[#101C3A] border border-white/10 flex items-center justify-center text-base">
+                  {GAME_ICONS[act.gameName?.toLowerCase().replace(/\s/g, '-')] || '🎮'}
                 </div>
-                <p className="text-[10px] text-[#7285AE]">
-                  {maskUserId(act.userId)} • ₹{act.betAmount}
-                </p>
-              </div>
-              <div className="text-right shrink-0">
-                <div className={`text-xs font-black ${act.result === 'won' ? 'text-emerald-400' : 'text-rose-500'}`}>
-                  {act.result === 'won' ? `Won +₹${act.winAmount}` : `Lost -₹${act.betAmount}`}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-white truncate">{act.gameName}</span>
+                  </div>
+                  <p className="text-[10px] text-[#7285AE]">
+                    {maskUserId(act.userId)} • ₹{act.betAmount}
+                  </p>
                 </div>
-                <p className="text-[10px] text-[#7285AE] flex items-center justify-end gap-1 mt-0.5">
-                  <Clock className="w-2.5 h-2.5" />
-                  {timeAgo(act.createdAt)}
-                </p>
-              </div>
-            </motion.div>
-          ))}
+                <div className="text-right shrink-0">
+                  <div className={`text-xs font-black ${act.result === 'won' ? 'text-emerald-400' : 'text-rose-500'}`}>
+                    {act.result === 'won' ? `Won +₹${act.winAmount}` : `Lost -₹${act.betAmount}`}
+                  </div>
+                  <p className="text-[10px] text-[#7285AE] flex items-center justify-end gap-1 mt-0.5">
+                    <Clock className="w-2.5 h-2.5" />
+                    {timeAgo(act.createdAt)}
+                  </p>
+                </div>
+              </motion.div>
+            ))
+          )}
         </div>
       </div>
 
@@ -173,24 +168,30 @@ export function RecentActivity() {
         </div>
 
         <div className="p-4 space-y-3">
-          {topWinners.map((winner, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border shrink-0 ${
-                i === 0 ? 'bg-amber-500/20 border-amber-400/40 text-amber-400' :
-                i === 1 ? 'bg-slate-500/20 border-slate-400/40 text-slate-400' :
-                'bg-amber-800/20 border-amber-700/40 text-amber-700'
-              }`}>
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate">{winner.username}</p>
-                <div className="flex items-center gap-1 mt-0.5">
-                  <TrendingUp className="w-3 h-3 text-emerald-400" />
-                  <span className="text-[10px] font-black text-emerald-400">₹{winner.amount.toLocaleString('en-IN')}</span>
+          {topWinners.length === 0 ? (
+            <div className="p-6 text-center text-xs font-bold text-[#7285AE]">
+              No top winners recorded yet.
+            </div>
+          ) : (
+            topWinners.map((winner, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black border shrink-0 ${
+                  i === 0 ? 'bg-amber-500/20 border-amber-400/40 text-amber-400' :
+                  i === 1 ? 'bg-slate-500/20 border-slate-400/40 text-slate-400' :
+                  'bg-amber-800/20 border-amber-700/40 text-amber-700'
+                }`}>
+                  {i + 1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-white truncate">{winner.username}</p>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <TrendingUp className="w-3 h-3 text-emerald-400" />
+                    <span className="text-[10px] font-black text-emerald-400">₹{winner.amount.toLocaleString('en-IN')}</span>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

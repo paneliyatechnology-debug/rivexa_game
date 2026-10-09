@@ -2,8 +2,7 @@ import { IsString, IsNumber, IsOptional, IsEnum, Min, Max } from 'class-validato
 
 export class CreateRoundDto {
   @IsNumber()
-  @Min(1)
-  @Max(100000)
+  @Min(0.01)
   betAmount: number;
 
   @IsString()

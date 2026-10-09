@@ -13,12 +13,21 @@ export default function WalletHistoryPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchHistory = async () => {
-    const savedUser = localStorage.getItem('rivexa_user');
-    const u = savedUser ? JSON.parse(savedUser) : { id: '00000000-0000-0000-0000-000000000000' };
+    const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+    const savedUser = typeof window !== 'undefined' ? localStorage.getItem('rivexa_user') : null;
+    const u = savedUser ? JSON.parse(savedUser) : null;
+    if (!token && !u?.id) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const apiBase = getApiBaseUrl();
-      const res = await fetch(`${apiBase}/wallet/history?userId=${u.id}`);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const url = u?.id ? `${apiBase}/wallet/history?userId=${u.id}` : `${apiBase}/wallet/history`;
+      const res = await fetch(url, { headers });
       if (res.ok) {
         const data = await res.json();
         setHistoryDeposits(data.deposits || []);

@@ -69,7 +69,7 @@ export const GameHeader: React.FC = () => {
         <img
           src="/assets/chicken-road/Assets/flat logo.png"
           alt="Chicken 2 Road Logo"
-          className="h-7 sm:h-9 w-auto object-contain"
+          className="h-6 sm:h-9 max-w-[110px] sm:max-w-none object-contain shrink"
           onError={(e) => {
             e.currentTarget.src = '/assets/chicken-road/Assets/chicken.png';
           }}

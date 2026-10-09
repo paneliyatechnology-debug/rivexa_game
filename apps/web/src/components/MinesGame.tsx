@@ -138,9 +138,19 @@ export function MinesGame() {
 
   // Load history on mount
   const fetchHistory = useCallback(async () => {
-    const userId = authUser?.id || 'demo_user';
+    const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+    const userId = authUser?.id;
+    if (!token && !userId) return;
+
     try {
-      const res = await fetch(`${getApiBaseUrl()}/games/mines/history?userId=${userId}`);
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const url = userId
+        ? `${getApiBaseUrl()}/games/mines/history?userId=${userId}`
+        : `${getApiBaseUrl()}/games/mines/history`;
+
+      const res = await fetch(url, { headers });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -217,12 +227,16 @@ export function MinesGame() {
     }
 
     setIsLoading(true);
-    const userId = authUser?.id || 'demo_user';
+    const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+    const userId = authUser?.id;
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${getApiBaseUrl()}/games/mines/start`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ userId, betAmount: amt, mineCount }),
       });
 

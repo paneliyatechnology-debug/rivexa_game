@@ -118,12 +118,10 @@ export function PushparaniGame() {
   const [isSelectModalOpen2, setIsSelectModalOpen2] = useState<boolean>(false);
 
   // History Pills from API
-  const [historyPills, setHistoryPills] = useState<number[]>([
-    3.60, 3.30, 1.04, 1.83, 2.07, 1.24, 3.11, 1.00, 3.79, 5.03, 2.45, 1.15, 8.20, 1.40, 4.12
-  ]);
+  const [historyPills, setHistoryPills] = useState<number[]>([]);
 
   // Round Engine State from API
-  const [roundId, setRoundId] = useState<string>('de98c608-9ce2-486d-b966-e9f8d7af93ab');
+  const [roundId, setRoundId] = useState<string>('—');
   const [status, setStatus] = useState<'BETTING_OPEN' | 'FLYING' | 'CRASHED'>('BETTING_OPEN');
   const [secondsRemaining, setSecondsRemaining] = useState<number>(5);
   const [currentMultiplier, setCurrentMultiplier] = useState<number>(1.0);

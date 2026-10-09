@@ -285,7 +285,7 @@ export function JetXGame() {
       }
       prevStatusRef.current = newStatus;
 
-      setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '9E56A9DF'));
+      setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '—'));
       setStatus(newStatus);
       setCrashedAt(parseFloat(data.round.crashMultiplier || '1.0'));
     }
@@ -297,7 +297,7 @@ export function JetXGame() {
     const multVal = parseFloat(data.currentMultiplier || '1.0');
     setCurrentMultiplier(multVal);
 
-    if (Array.isArray(data.history) && data.history.length > 0) {
+    if (Array.isArray(data.history)) {
       setHistoryPills(data.history);
     }
 

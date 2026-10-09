@@ -25,6 +25,12 @@ export class ChickenRoadScene extends Phaser.Scene {
   private highestCompletedCheckpoint = 0;
   private unsubscribeStore?: () => void;
 
+  private targetScrollX = 0;
+  private isUserDragging = false;
+  private lastDragX = 0;
+  private dragVelocity = 0;
+  private lastIsMobile: boolean | null = null;
+
   constructor() {
     super({ key: 'ChickenRoadScene' });
   }
@@ -62,6 +68,11 @@ export class ChickenRoadScene extends Phaser.Scene {
   }
 
   create() {
+    // Enable crisp linear texture filtering for high-resolution graphics on all displays
+    this.textures.each((t: Phaser.Textures.Texture) => {
+      t.setFilter(Phaser.Textures.FilterMode.LINEAR);
+    }, this);
+
     const { width, height } = this.scale;
     const isMobile = width < 600;
 
@@ -105,6 +116,16 @@ export class ChickenRoadScene extends Phaser.Scene {
 
   private handleScaleResize(gameSize: Phaser.Structs.Size) {
     const isMobile = gameSize.width < 600;
+
+    // Guard: Only re-build world if mobile breakpoint actually toggles (e.g. orientation flip).
+    // Prevents scene teardown & lag spikes when mobile browser address bar collapses/expands!
+    if (this.lastIsMobile === isMobile && this.checkpointMarkers.length > 0) {
+      const totalMapWidth = this.firstCheckpointX + (this.totalCheckpoints - 1) * this.stepDistance + 600;
+      this.cameras.main.setBounds(0, 0, totalMapWidth, gameSize.height);
+      return;
+    }
+    this.lastIsMobile = isMobile;
+
     this.stepDistance = isMobile ? 130 : 180;
     this.startX = isMobile ? 75 : 90;
     this.firstCheckpointX = isMobile ? 195 : 270;
@@ -138,31 +159,35 @@ export class ChickenRoadScene extends Phaser.Scene {
   }
 
   /**
-   * Interactive Mouse Drag / Touch Swipe Navigation:
+   * Interactive Mouse Drag / Touch Swipe Navigation with Smooth Momentum Inertia:
    * Allows player to freely swipe left and right across the entire road map anytime
    */
   private setupDragControls() {
-    let isDragging = false;
     let startX = 0;
     let startScrollX = 0;
 
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      isDragging = true;
+      this.isUserDragging = true;
       startX = pointer.x;
+      this.lastDragX = pointer.x;
       startScrollX = this.cameras.main.scrollX;
+      this.targetScrollX = startScrollX;
+      this.dragVelocity = 0;
     });
 
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
-      if (isDragging && pointer.isDown) {
+      if (this.isUserDragging && pointer.isDown) {
         const deltaX = pointer.x - startX;
-        const totalWidth = 280 + 25 * 190 + 600;
-        const maxScroll = Math.max(0, totalWidth - this.scale.width);
-        this.cameras.main.scrollX = Phaser.Math.Clamp(startScrollX - deltaX, 0, maxScroll);
+        const totalMapWidth = this.firstCheckpointX + (this.totalCheckpoints - 1) * this.stepDistance + 600;
+        const maxScroll = Math.max(0, totalMapWidth - this.scale.width);
+        this.dragVelocity = (this.lastDragX - pointer.x) * 0.5;
+        this.lastDragX = pointer.x;
+        this.targetScrollX = Phaser.Math.Clamp(startScrollX - deltaX, 0, maxScroll);
       }
     });
 
     const stopDrag = () => {
-      isDragging = false;
+      this.isUserDragging = false;
     };
 
     this.input.on('pointerup', stopDrag);
@@ -262,16 +287,33 @@ export class ChickenRoadScene extends Phaser.Scene {
     if (!this.cameras.main) return;
     const offset = this.scale.width < 600 ? 100 : 220;
     const targetScrollX = Math.max(0, chickenWorldX - offset);
+    this.targetScrollX = targetScrollX;
 
     this.tweens.add({
       targets: this.cameras.main,
       scrollX: targetScrollX,
-      duration: 480,
-      ease: 'Power2.easeOut',
+      duration: 380,
+      ease: 'Cubic.easeOut',
     });
   }
 
   update(time: number, delta: number) {
+    // Smooth camera scroll interpolation for buttery-smooth touch drag / swipe momentum
+    if (this.cameras.main && !this.tweens.isTweening(this.cameras.main)) {
+      const totalMapWidth = this.firstCheckpointX + (this.totalCheckpoints - 1) * this.stepDistance + 600;
+      const maxScroll = Math.max(0, totalMapWidth - this.scale.width);
+
+      if (!this.isUserDragging && Math.abs(this.dragVelocity) > 0.1) {
+        this.targetScrollX = Phaser.Math.Clamp(this.targetScrollX + this.dragVelocity, 0, maxScroll);
+        this.dragVelocity *= 0.92; // Friction decay
+      }
+
+      const currentScroll = this.cameras.main.scrollX;
+      if (Math.abs(this.targetScrollX - currentScroll) > 0.2) {
+        this.cameras.main.scrollX += (this.targetScrollX - currentScroll) * 0.22;
+      }
+    }
+
     // Barricade stop Y limit (just above the barricade at y = 120)
     const stopY = this.barricadeY - 26; // ~94px
 
@@ -374,18 +416,20 @@ export class ChickenRoadScene extends Phaser.Scene {
     }
 
     // 1. Dark Gray Asphalt Road Surface (x: 140 to roadEndX, y: 0 to envH)
+    const isMobile = this.scale.width < 600;
     const asphalt = this.add.graphics();
     asphalt.fillStyle(0x4b4e54, 1);
     asphalt.fillRect(140, 0, roadEndX - 140, envH);
 
-    // Vertical Dashed White Lane Divider Lines separating road lanes
-    asphalt.lineStyle(4, 0xffffff, 0.85);
+    // Vertical Dashed White Lane Divider Lines separating road lanes (Bold 8px line thickness matching official reference image)
+    const lineThickness = isMobile ? 6 : 8;
+    asphalt.lineStyle(lineThickness, 0xffffff, 0.92);
     for (let cp = 1; cp <= this.totalCheckpoints + 1; cp++) {
-      const lineX = this.firstCheckpointX - 55 + (cp - 1) * this.stepDistance;
-      for (let y = 10; y < envH; y += 36) {
+      const lineX = this.firstCheckpointX - (this.stepDistance / 2) + (cp - 1) * this.stepDistance;
+      for (let y = 10; y < envH; y += 42) {
         asphalt.beginPath();
         asphalt.moveTo(lineX, y);
-        asphalt.lineTo(lineX, y + 20);
+        asphalt.lineTo(lineX, y + 26);
         asphalt.strokePath();
       }
     }
@@ -417,12 +461,14 @@ export class ChickenRoadScene extends Phaser.Scene {
 
     // Start Zone Game Banner / Arch
     const bannerY = Math.min(25, Math.round(this.barricadeY - 20));
-    if (this.textures.exists('flat_logo')) {
-      const banner = this.add.image(90, bannerY, 'flat_logo').setDisplaySize(90, 36);
-      this.roadContainer.add(banner);
-    } else if (this.textures.exists('logo')) {
-      const banner = this.add.image(90, bannerY, 'logo').setDisplaySize(90, 36);
-      this.roadContainer.add(banner);
+    if (this.scale.width >= 600) {
+      if (this.textures.exists('flat_logo')) {
+        const banner = this.add.image(90, bannerY, 'flat_logo').setDisplaySize(90, 36);
+        this.roadContainer.add(banner);
+      } else if (this.textures.exists('logo')) {
+        const banner = this.add.image(90, bannerY, 'logo').setDisplaySize(90, 36);
+        this.roadContainer.add(banner);
+      }
     }
 
     // Decorative Round Green Trees on left lawn
@@ -502,26 +548,29 @@ export class ChickenRoadScene extends Phaser.Scene {
    * Spawns 25 Sewer Manhole Checkpoint Covers along lower road (y = 295) matching reference image
    */
   private spawnCheckpointMarkers() {
+    const isMobile = this.scale.width < 600;
+    const coinSize = isMobile ? 80 : 100;
+
     for (let i = 1; i <= this.totalCheckpoints; i++) {
       const x = this.firstCheckpointX + (i - 1) * this.stepDistance;
       const markerContainer = this.add.container(x, this.manholeY);
 
       const hatchImg = this.textures.exists('hatch')
-        ? this.add.image(0, 0, 'hatch').setDisplaySize(100, 100)
+        ? this.add.image(0, 0, 'hatch').setDisplaySize(coinSize, coinSize)
         : null;
 
       const manholeG = this.add.graphics();
       const multVal = this.getMultiplierValue(i);
 
       const multText = this.add.text(0, 0, multVal, {
-        fontSize: '20px',
+        fontSize: isMobile ? '15px' : '20px',
         color: '#ffffff',
         fontStyle: 'bold',
         fontFamily: 'Arial, sans-serif',
       }).setOrigin(0.5);
 
       if (hatchImg) {
-        markerContainer.add([hatchImg, multText]);
+        markerContainer.add([manholeG, hatchImg, multText]);
       } else {
         markerContainer.add([manholeG, multText]);
       }
@@ -542,36 +591,51 @@ export class ChickenRoadScene extends Phaser.Scene {
    * - Completed: hatch_2.png golden cover matching official assets!
    */
   private updateCheckpointMarkers() {
+    const isMobile = this.scale.width < 600;
+    const coinSize = isMobile ? 80 : 100;
+
     this.checkpointMarkers.forEach((marker) => {
       const cpIndex = marker.getData('cpIndex') as number;
       const manholeG = marker.getData('manholeG') as Phaser.GameObjects.Graphics;
       const hatchImg = marker.getData('hatchImg') as Phaser.GameObjects.Image;
       const multText = marker.getData('multText') as Phaser.GameObjects.Text;
 
-      multText.setText(this.getMultiplierValue(cpIndex));
+      if (multText) {
+        multText.setText(this.getMultiplierValue(cpIndex));
+        multText.setFontSize(isMobile ? 15 : 20);
+      }
       if (manholeG) manholeG.clear();
 
       if (cpIndex <= this.currentCheckpoint) {
-        if (hatchImg && this.textures.exists('hatch_2')) {
-          hatchImg.setTexture('hatch_2');
-          hatchImg.setDisplaySize(100, 100);
+        if (hatchImg) {
+          if (this.textures.exists('hatch_2')) {
+            hatchImg.setTexture('hatch_2');
+          }
+          hatchImg.setDisplaySize(coinSize, coinSize);
+          hatchImg.setVisible(true);
         }
-        multText.setVisible(false);
+        if (multText) multText.setVisible(false);
       } else {
-        if (hatchImg && this.textures.exists('hatch')) {
-          hatchImg.setTexture('hatch');
-          hatchImg.setDisplaySize(100, 100);
+        if (hatchImg) {
+          if (this.textures.exists('hatch')) {
+            hatchImg.setTexture('hatch');
+          }
+          hatchImg.setDisplaySize(coinSize, coinSize);
+          hatchImg.setVisible(true);
         }
-        multText.setVisible(true);
-        multText.setColor('#ffffff');
+        if (multText) {
+          multText.setVisible(true);
+          multText.setColor('#ffffff');
+        }
       }
     });
 
-    // Update active blue tooltip bubble position below chicken feet (y = 350)
+    // Update active blue tooltip bubble position below chicken feet
     if (this.activeTooltipBadge) {
       if (this.currentCheckpoint > 0) {
         const activeX = this.firstCheckpointX + (this.currentCheckpoint - 1) * this.stepDistance;
-        this.activeTooltipBadge.setPosition(activeX, this.chickenY + 45);
+        const offsetY = isMobile ? 38 : 45;
+        this.activeTooltipBadge.setPosition(activeX, this.chickenY + offsetY);
         const badgeText = this.activeTooltipBadge.getData('text') as Phaser.GameObjects.Text;
         if (badgeText) {
           badgeText.setText(this.getMultiplierValue(this.currentCheckpoint));
@@ -695,13 +759,16 @@ export class ChickenRoadScene extends Phaser.Scene {
   private createChicken() {
     this.chicken = this.add.container(this.startX, this.chickenY);
 
+    const isMobile = this.scale.width < 600;
+    const chickenSize = isMobile ? 82 : 104;
+
     // Soft Shadow
     this.chickenShadow = this.add.graphics();
     this.chickenShadow.fillStyle(0x000000, 0.35);
-    this.chickenShadow.fillEllipse(0, 26, 42, 14);
+    this.chickenShadow.fillEllipse(0, isMobile ? 20 : 26, isMobile ? 34 : 42, isMobile ? 11 : 14);
 
     if (this.textures.exists('chicken')) {
-      const chickenSprite = this.add.image(0, -6, 'chicken').setDisplaySize(104, 104);
+      const chickenSprite = this.add.image(0, -6, 'chicken').setDisplaySize(chickenSize, chickenSize);
       chickenSprite.setName('chickenSprite');
       this.chicken.add([this.chickenShadow, chickenSprite]);
     } else {
@@ -781,19 +848,21 @@ export class ChickenRoadScene extends Phaser.Scene {
     const singleCarKeys = ['car_single_1', 'car_single_2', 'car_single_3', 'car_single_4', 'car_single_5'];
     const selectedKey = singleCarKeys[(index - 1) % singleCarKeys.length];
 
+    const isMobile = this.scale.width < 600;
+
     if (this.textures.exists(selectedKey)) {
       const carImg = this.add.image(0, 0, selectedKey);
       if (selectedKey === 'car_single_4') {
         // Truck / bus vehicle
-        carImg.setDisplaySize(96, 160);
+        carImg.setDisplaySize(isMobile ? 74 : 96, isMobile ? 124 : 160);
       } else {
         // Single sports car / sedan
-        carImg.setDisplaySize(84, 140);
+        carImg.setDisplaySize(isMobile ? 66 : 84, isMobile ? 110 : 140);
       }
       if (direction === -1) carImg.setAngle(180);
       container.add(carImg);
     } else if (this.textures.exists('car')) {
-      const carImg = this.add.image(0, 0, 'car').setDisplaySize(84, 140);
+      const carImg = this.add.image(0, 0, 'car').setDisplaySize(isMobile ? 66 : 84, isMobile ? 110 : 140);
       if (direction === -1) carImg.setAngle(180);
       container.add(carImg);
     } else {
@@ -1249,6 +1318,9 @@ export class ChickenRoadScene extends Phaser.Scene {
     this.highestCompletedCheckpoint = 0;
     this.isMoving = false;
     this.isCrashed = false;
+    this.targetScrollX = 0;
+    this.dragVelocity = 0;
+    this.isUserDragging = false;
 
     // Remove all active barricades
     this.barricadeContainers.forEach((b) => b.destroy());
@@ -1274,13 +1346,15 @@ export class ChickenRoadScene extends Phaser.Scene {
     // Reset Checkpoint Markers
     this.updateCheckpointMarkers();
 
-    // Reset Camera scroll position to 0
+    // Reset Camera scroll position cleanly to 0
     if (this.cameras.main) {
+      this.tweens.killTweensOf(this.cameras.main);
+      this.cameras.main.scrollX = 0;
       this.tweens.add({
         targets: this.cameras.main,
         scrollX: 0,
         duration: 350,
-        ease: 'Power2.easeOut',
+        ease: 'Cubic.easeOut',
       });
     }
 

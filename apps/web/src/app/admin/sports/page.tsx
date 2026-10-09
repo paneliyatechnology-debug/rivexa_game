@@ -1097,6 +1097,9 @@ function SportsAdminContent() {
     { id: 'spin', name: 'Spin Wheel' },
     { id: 'dice', name: 'Over/Under Dice' },
     { id: 'andar-bahar', name: 'Andar Bahar' },
+    { id: 'pushparani', name: 'Pushparani' },
+    { id: 'hilo', name: 'HILO Card' },
+    { id: 'chicken-road', name: 'Chicken Road 2' },
   ];
 
   return (
@@ -1283,6 +1286,10 @@ function SportsAdminContent() {
                     'crash': '🚀',
                     'spin': '🎡',
                     'dice': '🎲',
+                    'pushparani': '🚚',
+                    'hilo': '🃏',
+                    'chicken-road': '🐔',
+                    'coin-flip': '🪙',
                   };
                   return (
                     <Link

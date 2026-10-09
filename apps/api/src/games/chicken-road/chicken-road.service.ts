@@ -90,27 +90,13 @@ export class ChickenRoadService {
     const { betAmount, currency = 'INR', difficulty, clientSeed } = dto;
     const effectiveUserId = this.toValidUserId(userId);
 
-    if (betAmount <= 0) {
-      throw new BadRequestException('INVALID_BET: Bet amount must be greater than 0');
+    const dbConfig = await this.resolveGameConfigFromDb();
+
+    if (betAmount < dbConfig.minBet) {
+      throw new BadRequestException(`INVALID_BET: Minimum bet allowed is ₹${dbConfig.minBet}`);
     }
-
-    // Check if user already has an active round; auto-close it so user starts fresh
-    const existingActive = await this.prisma.chickenRoadRound.findFirst({
-      where: {
-        userId: effectiveUserId,
-        status: { in: ['CREATED', 'READY', 'RUNNING'] },
-      },
-    });
-
-    if (existingActive) {
-      await this.prisma.chickenRoadRound.update({
-        where: { id: existingActive.id },
-        data: {
-          status: 'CRASHED',
-          result: 'LOSS',
-          endedAt: new Date(),
-        },
-      });
+    if (betAmount > dbConfig.maxBet) {
+      throw new BadRequestException(`INVALID_BET: Maximum bet allowed is ₹${dbConfig.maxBet}`);
     }
 
     const serverSeed = this.fairnessService.generateServerSeed();
@@ -125,6 +111,25 @@ export class ChickenRoadService {
 
       if (!wallet) {
         throw new BadRequestException('WALLET_NOT_FOUND: User wallet does not exist');
+      }
+
+      // 2. Auto-resolve any previous active round if present, allowing user to start fresh immediately
+      const existingActive = await tx.chickenRoadRound.findFirst({
+        where: {
+          userId: activeUserId,
+          status: { in: ['CREATED', 'READY', 'RUNNING'] },
+        },
+      });
+
+      if (existingActive) {
+        await tx.chickenRoadRound.update({
+          where: { id: existingActive.id },
+          data: {
+            status: 'CRASHED',
+            result: 'LOSS',
+            endedAt: new Date(),
+          },
+        });
       }
 
       if (Number(wallet.mainBalance) < betAmount) {
@@ -312,11 +317,15 @@ export class ChickenRoadService {
 
     if (outcome.isSafe) {
       // Safe step!
-      const newMultiplier = this.multiplierService.calculateMultiplier(diffSlug, nextCheckpoint);
+      const dbConfig = await this.resolveGameConfigFromDb();
+      const rtpPercentage = dbConfig.rtpPercentage;
+
+      const newMultiplier = this.multiplierService.calculateMultiplier(diffSlug, nextCheckpoint, rtpPercentage);
       const potentialPayout = this.multiplierService.calculatePayout(
         Number(round.betAmount),
         diffSlug,
         nextCheckpoint,
+        rtpPercentage,
       );
 
       const updatedRound = await this.prisma.chickenRoadRound.update({
@@ -352,6 +361,7 @@ export class ChickenRoadService {
       });
 
       const responsePayload = {
+        roundId: round.id,
         result: 'SAFE' as const,
         checkpoint: nextCheckpoint,
         multiplier: newMultiplier,
@@ -416,6 +426,7 @@ export class ChickenRoadService {
       });
 
       const crashPayload = {
+        roundId: round.id,
         result: 'CRASH' as const,
         checkpoint: nextCheckpoint,
         multiplier: Number(round.currentMultiplier),
@@ -542,6 +553,7 @@ export class ChickenRoadService {
     }
 
     const cashoutResponse = {
+      roundId: round.id,
       result: 'CASHED_OUT' as const,
       checkpoint: round.currentCheckpoint,
       multiplier: Number(round.currentMultiplier),
@@ -701,19 +713,45 @@ export class ChickenRoadService {
   }
 
   /**
+   * Resolves authoritative game config from database without UUID type errors.
+   */
+  private async resolveGameConfigFromDb() {
+    try {
+      const dbGame = await this.prisma.game.findFirst({
+        where: {
+          slug: { in: ['chicken-road', 'chickenroad', 'chicken_road'] },
+        },
+      });
+      if (dbGame) {
+        return {
+          minBet: dbGame.minBet !== undefined && dbGame.minBet !== null ? Number(dbGame.minBet) : 10.0,
+          maxBet: dbGame.maxBet !== undefined && dbGame.maxBet !== null ? Number(dbGame.maxBet) : 200.0,
+          rtpPercentage: dbGame.rtpPercentage !== undefined && dbGame.rtpPercentage !== null ? Number(dbGame.rtpPercentage) : 97.0,
+        };
+      }
+    } catch (e) {
+      console.error('resolveGameConfigFromDb error:', e);
+    }
+    return { minBet: 10.0, maxBet: 200.0, rtpPercentage: 97.0 };
+  }
+
+  /**
    * Game configuration details.
    */
-  getGameConfig() {
+  async getGameConfig() {
+    const config = await this.resolveGameConfigFromDb();
+
     return {
       game: {
         name: 'Original Chicken Road',
         version: '1.0.0',
         enabled: true,
+        rtpPercentage: config.rtpPercentage,
       },
       limits: {
-        minBet: 1.0,
-        maxBet: 100000.0,
-        defaultBet: 10.0,
+        minBet: config.minBet,
+        maxBet: config.maxBet,
+        defaultBet: Math.max(config.minBet, Math.min(10, config.maxBet)),
       },
       currency: {
         code: 'INR',

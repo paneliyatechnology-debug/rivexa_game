@@ -59,10 +59,10 @@ export function DiceGame(props: DiceGameProps) {
 
   // Stats Counters State
   const [stats, setStats] = useState({
-    totalRolls: 142,
-    winRate: 54.2,
-    todayProfit: 3450.00,
-    biggestWin: 980.00,
+    totalRolls: 0,
+    winRate: 0,
+    todayProfit: 0,
+    biggestWin: 0,
   });
 
   // Active History Tab Selection

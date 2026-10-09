@@ -98,16 +98,16 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
 
   // Live Stats State
   const [stats, setStats] = useState<StatData>({
-    totalUsers: 12,
-    totalDeposits: 18002500,
-    totalWithdrawals: 969600,
-    totalNetProfit: 17032900,
+    totalUsers: 0,
+    totalDeposits: 0,
+    totalWithdrawals: 0,
+    totalNetProfit: 0,
     todayDeposits: 0,
     todayWithdrawals: 0,
     todayNetProfit: 0,
     pendingDeposits: 0,
     pendingWithdrawals: 0,
-    activeGames: 9,
+    activeGames: 0,
   });
 
   const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
@@ -238,7 +238,9 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     { id: 'pushparani', name: 'Pushparani Truck Express', rtpPercentage: 95, minBet: 10, maxBet: 100000, isActive: true },
     { id: 'hilo', name: 'HILO Card Prediction', rtpPercentage: 96, minBet: 10, maxBet: 500000, isActive: true },
     { id: 'chicken-road', name: 'Chicken Road 2', rtpPercentage: 97, minBet: 10, maxBet: 100000, isActive: true },
+    { id: 'coin-flip', name: '3D Coin Flip', rtpPercentage: 96, minBet: 10, maxBet: 50000, isActive: true },
   ]);
+
 
   // Game Override Form State
   const [overrideTargets, setOverrideTargets] = useState<{ [key: string]: string }>({
@@ -411,7 +413,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
         superAdminPassword: '',
         superAdminPhone: '',
         initialCredit: 100000,
-        allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'hilo', 'sports'],
+        allowedGames: ['mines', 'fast-parity', 'parity', 'spin', 'dice', 'crash', 'jet', 'andar-bahar', 'pushparani', 'coin-flip', 'hilo', 'chicken-road', 'sports'],
       });
       fetchTenants();
     } catch (err: any) {

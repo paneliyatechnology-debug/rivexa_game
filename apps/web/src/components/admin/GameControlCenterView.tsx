@@ -66,53 +66,149 @@ export function GameControlCenterView({
   });
 
   const [currentRoundInfo, setCurrentRoundInfo] = useState({
-    periodNumber: '#202609257106',
-    status: 'BETTING OPEN (20s)',
-    openCard: 'K♠',
+    periodNumber: '—',
+    status: 'WAITING FOR ROUND',
+    openCard: '—',
     activeBetsSummary: {},
   });
 
   const [nextRoundInfo, setNextRoundInfo] = useState<{
     periodNumber: string;
-    projectedNumber: number;
+    projectedNumber: number | string;
     projectedColor: string;
     projectedLabel: string;
     projectedMultiplier?: string;
     isOverride: boolean;
   }>({
-    periodNumber: '#202609257107',
-    projectedNumber: 7,
-    projectedColor: 'GREEN',
+    periodNumber: '—',
+    projectedNumber: '—',
+    projectedColor: '—',
     projectedLabel: 'AUTOMATIC RTP (PROFIT OPTIMIZED)',
-    projectedMultiplier: '2.50',
+    projectedMultiplier: '1.00',
     isOverride: false,
   });
 
-  // Settled History Mock / Live Data
-  const [settledPeriods, setSettledPeriods] = useState<any[]>(() => {
-    return gameType === 'hilo' || gameType === 'dice' ? [] : [
-      { period: '#202609257106', winningNumber: 9, colors: 'GREEN', override: 'AUTO RTP', time: '05:13:00, Sep 25' },
-      { period: '#202609257105', winningNumber: 2, colors: 'RED', override: 'AUTO RTP', time: '05:12:30, Sep 25' },
-      { period: '#202609257104', winningNumber: 5, colors: 'VIOLET/GREEN', override: 'AUTO RTP', time: '05:12:00, Sep 25' },
-      { period: '#202609257103', winningNumber: 0, colors: 'VIOLET/RED', override: 'AUTO RTP', time: '05:11:30, Sep 25' },
-      { period: '#202609257102', winningNumber: 7, colors: 'GREEN', override: 'AUTO RTP', time: '05:11:00, Sep 25' },
-    ];
+  // Settled History Live Data
+  const [settledPeriods, setSettledPeriods] = useState<any[]>([]);
+  const [minesPlayed, setMinesPlayed] = useState<any[]>([]);
+  const [andarBaharHistory, setAndarBaharHistory] = useState<any[]>([]);
+  const [diceHistory, setDiceHistory] = useState<any[]>([]);
+
+  // Chicken Road 2 Dedicated Admin State
+  const [chickenRoadStats, setChickenRoadStats] = useState<{
+    totalRounds: number;
+    totalWagered: number;
+    totalPayout: number;
+    grossProfit: number;
+    crashRate: number;
+  }>({
+    totalRounds: 0,
+    totalWagered: 0,
+    totalPayout: 0,
+    grossProfit: 0,
+    crashRate: 0,
   });
 
-  const [minesPlayed, setMinesPlayed] = useState<any[]>([
-    { user: 'Jatin Kakadiya', amount: 100.00, status: 'PLAYING', multiplier: 1.00, payout: 0.00, time: '13:39:28, Sep 17' },
-    { user: 'Jatin Kakadiya', amount: 100.00, status: 'HIT MINE (LOST)', multiplier: 0.00, payout: 0.00, time: '13:38:52, Sep 17' },
-    { user: 'Jatin Kakadiya', amount: 100.00, status: 'CASHED OUT (WON)', multiplier: 1.66, payout: 166.00, time: '13:38:26, Sep 17' },
-    { user: 'Jaydeep Patel', amount: 100000.00, status: 'CASHED OUT (WON)', multiplier: 1.94, payout: 194000.00, time: '14:48:28, Sep 09' },
+  const [chickenRoadRounds, setChickenRoadRounds] = useState<any[]>([]);
+  const [chickenRoadTotalRounds, setChickenRoadTotalRounds] = useState<number>(0);
+  const [chickenRoadTotalPages, setChickenRoadTotalPages] = useState<number>(1);
+  const [chickenRoadDifficulties, setChickenRoadDifficulties] = useState<any[]>([
+    { slug: 'easy', name: 'Easy', safeProbability: 0.95, maxMultiplier: 100 },
+    { slug: 'medium', name: 'Medium', safeProbability: 0.85, maxMultiplier: 500 },
+    { slug: 'hard', name: 'Hard', safeProbability: 0.70, maxMultiplier: 2500 },
+    { slug: 'hardcore', name: 'Hardcore', safeProbability: 0.50, maxMultiplier: 10000 },
   ]);
 
-  const [andarBaharHistory, setAndarBaharHistory] = useState<any[]>([
-    { period: '20260917130001', openCard: '4♠', winner: 'ANDAR', winningCard: '4♥', deals: 7, override: 'NO', time: '2026-09-17 13:37:01' },
-    { period: '20260909140003', openCard: 'A♣', winner: 'BAHAR', winningCard: 'A♦', deals: 10, override: 'NO', time: '2026-09-09 14:58:44' },
-    { period: '20260909140002', openCard: 'A♦', winner: 'ANDAR', winningCard: 'A♥', deals: 17, override: 'NO', time: '2026-09-09 14:44:01' },
-  ]);
+  const [chickenRoadLoading, setChickenRoadLoading] = useState<boolean>(false);
+  const [chickenRoadPage, setChickenRoadPage] = useState<number>(1);
+  const [chickenRoadStatusFilter, setChickenRoadStatusFilter] = useState<string>('ALL');
+  const [chickenRoadDiffFilter, setChickenRoadDiffFilter] = useState<string>('ALL');
+  const [chickenRoadSearch, setChickenRoadSearch] = useState<string>('');
+  const [editingDiffItem, setEditingDiffItem] = useState<{
+    slug: string;
+    safeProbability: number;
+    maxMultiplier: number;
+  } | null>(null);
 
-  const [diceHistory, setDiceHistory] = useState<any[]>([]);
+  const fetchChickenRoadData = React.useCallback(async () => {
+    if (gameType !== 'chicken-road') return;
+    setChickenRoadLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const [dashRes, roundsRes, diffRes] = await Promise.all([
+        fetch(`${apiBase}/admin/chicken-road/dashboard`).catch(() => null),
+        fetch(`${apiBase}/admin/chicken-road/rounds?page=${chickenRoadPage}&limit=15&status=${chickenRoadStatusFilter}&difficulty=${chickenRoadDiffFilter}&search=${encodeURIComponent(chickenRoadSearch)}`).catch(() => null),
+        fetch(`${apiBase}/admin/chicken-road/difficulties`).catch(() => null),
+      ]);
+
+      if (dashRes && dashRes.ok) {
+        const dJson = await dashRes.json();
+        if (dJson?.success && dJson?.data) {
+          setChickenRoadStats(dJson.data);
+          setLiveStats((prev) => ({
+            ...prev,
+            todayStakes: dJson.data.totalWagered || 0,
+            todayPayouts: dJson.data.totalPayout || 0,
+            houseNetProfit: dJson.data.grossProfit || 0,
+            activePlayers: dJson.data.activePlayers !== undefined ? dJson.data.activePlayers : 0,
+          }));
+        }
+      }
+
+      if (roundsRes && roundsRes.ok) {
+        const rJson = await roundsRes.json();
+        if (rJson?.success && rJson?.data) {
+          setChickenRoadRounds(rJson.data.items || []);
+          setChickenRoadTotalRounds(rJson.data.total || 0);
+          setChickenRoadTotalPages(rJson.data.totalPages || 1);
+        }
+      }
+
+      if (diffRes && diffRes.ok) {
+        const diffJson = await diffRes.json();
+        if (diffJson?.success && Array.isArray(diffJson?.data) && diffJson.data.length > 0) {
+          setChickenRoadDifficulties(diffJson.data);
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    } finally {
+      setChickenRoadLoading(false);
+    }
+  }, [gameType, chickenRoadPage, chickenRoadStatusFilter, chickenRoadDiffFilter, chickenRoadSearch]);
+
+  React.useEffect(() => {
+    if (gameType === 'chicken-road') {
+      fetchChickenRoadData();
+      const timer = setInterval(fetchChickenRoadData, 4000);
+      return () => clearInterval(timer);
+    }
+  }, [gameType, fetchChickenRoadData]);
+
+  const handleSaveDifficulty = async (slug: string, safeProb: number, maxMult: number) => {
+    try {
+      const apiBase = getApiBaseUrl();
+      const res = await fetch(`${apiBase}/admin/chicken-road/difficulties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          name: slug.toUpperCase(),
+          safeProbability: Number(safeProb),
+          maxMultiplier: Number(maxMult),
+        }),
+      });
+      if (res.ok) {
+        setMessage(`✅ ${slug.toUpperCase()} mode updated: Safe ${(safeProb * 100).toFixed(0)}%, Max ${maxMult}x`);
+        setEditingDiffItem(null);
+        fetchChickenRoadData();
+      } else {
+        setMessage(`⚠️ Failed to update ${slug} difficulty settings`);
+      }
+    } catch (e) {
+      setMessage(`⚠️ Error updating ${slug} difficulty settings`);
+    }
+  };
 
   const fetchLiveControlData = React.useCallback(async () => {
     try {
@@ -419,6 +515,9 @@ export function GameControlCenterView({
       if (data?.success) {
         setMessage('✅ ' + (data.message || 'All bet history and revenue have been successfully reset to ₹0.00!'));
         await fetchLiveControlData();
+        if (gameType === 'chicken-road' || gameId === 'chicken-road') {
+          fetchChickenRoadData();
+        }
       } else {
         setMessage('⚠️ ' + (data?.message || 'Failed to reset bet history.'));
       }
@@ -621,6 +720,126 @@ export function GameControlCenterView({
       </div>
 
       {/* LIVE ROUND & PERIOD STATUS BAR & LIVE BETS TELEMETRY (EXCLUDED FOR DICE) */}
+      {/* CHICKEN ROAD DIFFICULTY CONFIGURATION PANEL */}
+      {gameType === 'chicken-road' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-500 font-extrabold text-base">🐔</span>
+              <div>
+                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+                  Chicken Road 2 — Lane Difficulty Controls (Easy, Medium, Hard, Hardcore)
+                </h3>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  Configure step safety probabilities, obstacle vehicle hit rates, and max multiplier caps per difficulty mode
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => fetchChickenRoadData()}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>🔄</span>
+              <span>Refresh Modes</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {['easy', 'medium', 'hard', 'hardcore'].map((slug) => {
+              const diff = chickenRoadDifficulties.find((d) => d.slug === slug) || {
+                slug,
+                name: slug.toUpperCase(),
+                safeProbability: slug === 'easy' ? 0.95 : slug === 'medium' ? 0.85 : slug === 'hard' ? 0.70 : 0.50,
+                maxMultiplier: slug === 'easy' ? 100 : slug === 'medium' ? 500 : slug === 'hard' ? 2500 : 10000,
+              };
+
+              const badgeColor =
+                slug === 'easy'
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : slug === 'medium'
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : slug === 'hard'
+                  ? 'bg-orange-100 text-orange-800 border-orange-300'
+                  : 'bg-rose-100 text-rose-800 border-rose-300';
+
+              const isEditing = editingDiffItem?.slug === slug;
+
+              return (
+                <div key={slug} className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${badgeColor}`}>
+                      {slug.toUpperCase()} MODE
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">25 Checkpoints</span>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Safe Probability (0.1 - 0.99)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.1"
+                          max="0.99"
+                          value={editingDiffItem.safeProbability}
+                          onChange={(e) => setEditingDiffItem({ ...editingDiffItem, safeProbability: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Max Multiplier Cap (x)</label>
+                        <input
+                          type="number"
+                          value={editingDiffItem.maxMultiplier}
+                          onChange={(e) => setEditingDiffItem({ ...editingDiffItem, maxMultiplier: parseInt(e.target.value, 10) || 0 })}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => handleSaveDifficulty(slug, editingDiffItem.safeProbability, editingDiffItem.maxMultiplier)}
+                          className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-extrabold text-xs rounded-lg shadow-xs cursor-pointer"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingDiffItem(null)}
+                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-lg cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Safe Crossing:</span>
+                        <span className="font-black text-slate-900">{(diff.safeProbability * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Car Accident Hit:</span>
+                        <span className="font-black text-rose-600">{((1 - diff.safeProbability) * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Max Multiplier:</span>
+                        <span className="font-black text-amber-600">{diff.maxMultiplier}x</span>
+                      </div>
+                      <button
+                        onClick={() => setEditingDiffItem({ slug: diff.slug, safeProbability: diff.safeProbability, maxMultiplier: diff.maxMultiplier })}
+                        className="w-full py-1.5 mt-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-extrabold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
+                      >
+                        ⚙️ Edit Mode Config
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {gameType !== 'dice' && (
         <>
           {/* LIVE ROUND & PERIOD STATUS BAR FOR ALL GAMES */}
@@ -705,7 +924,37 @@ export function GameControlCenterView({
                   </span>
                 </div>
               </div>
-            ) : (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani' || gameType === 'chicken-road') ? (
+            ) : gameType === 'chicken-road' ? (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-center">
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-amber-900 uppercase block">TOTAL CHICKEN ROAD ROUNDS</span>
+                  <span className="text-base font-black text-amber-600 block mt-0.5">
+                    {chickenRoadStats.totalRounds || (currentRoundInfo as any).activeBetsList?.length || 0} ROUNDS
+                  </span>
+                </div>
+
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-emerald-800 uppercase block">TOTAL VOLUME WAGERED</span>
+                  <span className="text-base font-black text-emerald-600 block mt-0.5">
+                    ₹{Number(chickenRoadStats.totalWagered || liveStats.todayStakes || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-rose-800 uppercase block">TOTAL WINNING PAYOUTS</span>
+                  <span className="text-base font-black text-rose-600 block mt-0.5">
+                    ₹{Number(chickenRoadStats.totalPayout || liveStats.todayPayouts || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-purple-900 uppercase block">CAR ACCIDENT CRASH RATE</span>
+                  <span className="text-base font-black text-purple-600 block mt-0.5">
+                    {Number(chickenRoadStats.crashRate || 0).toFixed(1)}% (LOSING ROUNDS)
+                  </span>
+                </div>
+              </div>
+            ) : (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
                 <div className="bg-cyan-50 border border-cyan-200 rounded-2xl p-3">
                   <span className="text-[10px] font-black text-cyan-900 uppercase block">TOTAL ACTIVE PLAYERS IN FLIGHT</span>
@@ -949,8 +1198,8 @@ export function GameControlCenterView({
               ) : (
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl py-4 text-center text-xs font-semibold text-slate-400">
                   {gameType === 'mines' ? 'No active Mines game sessions currently playing. Player sessions will display here live.' :
-                   gameType === 'hilo' ? 'No active HILO game sessions currently playing. Real player bets and continuous prediction rounds will display here live.' :
-                   (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani' || gameType === 'chicken-road') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
+                   gameType === 'chicken-road' ? 'No active Chicken Road player sessions currently playing. Real player bets and checkpoints will display here live.' :
+                   (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
                    `No live bets placed yet for current round ${currentRoundInfo.periodNumber}. Real bets placed by players will display here live.`}
                 </div>
               )
@@ -966,11 +1215,15 @@ export function GameControlCenterView({
                   <h3 className="text-sm font-black text-indigo-300 uppercase tracking-wide">
                     {(gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ?
                       `NEXT FLIGHT CRASH MULTIPLIER PREVIEW (${nextRoundInfo.periodNumber || '#NEXT_CRASH_FLIGHT'})` :
+                      gameType === 'chicken-road' ?
+                      'CHICKEN ROAD 2 ENGINE & SHA-256 PROVABLY FAIR PREVIEW' :
                       `NEXT ROUND LIVE RESULT PREVIEW (${nextRoundInfo.periodNumber || '#NEXT'})`}
                   </h3>
                   <p className="text-[11px] font-semibold text-slate-400">
                     {(gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ?
                       'Live calculated flight multiplier outcome that WILL crash for the next round' :
+                      gameType === 'chicken-road' ?
+                      'Dynamic multi-lane vehicle obstacle probabilities & provably fair SHA-256 seed state' :
                       'Live calculated outcome that WILL land for the next round (Number, Color & Algorithm Mode)'}
                   </p>
                 </div>
@@ -986,7 +1239,31 @@ export function GameControlCenterView({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-              {gameType === 'andar-bahar' ? (
+              {gameType === 'chicken-road' ? (
+                <>
+                  {/* CHICKEN ROAD ENGINE RATING */}
+                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">ACTIVE ENGINE RATING</span>
+                      <span className="text-xs font-semibold text-slate-300 font-mono">Provably Fair SHA-256</span>
+                    </div>
+                    <span className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black uppercase shadow-md">
+                      🐔 MULTI-LANE RNG
+                    </span>
+                  </div>
+
+                  {/* CHICKEN ROAD TARGET ALGORITHM */}
+                  <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between shadow-inner">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">TARGET ALGORITHM</span>
+                      <span className="text-xs font-semibold text-slate-300">House Edge &amp; RTP</span>
+                    </div>
+                    <span className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black uppercase shadow-md font-mono">
+                      RTP {rtp}% (House Edge {(100 - rtp).toFixed(1)}%)
+                    </span>
+                  </div>
+                </>
+              ) : gameType === 'andar-bahar' ? (
                 <>
                   {/* PROJECTED WINNER SIDE */}
                   <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-4 flex items-center justify-between shadow-inner">
@@ -1114,9 +1391,9 @@ export function GameControlCenterView({
                       <span className="text-xs font-semibold text-slate-300">Target Result</span>
                     </div>
                     <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl font-black text-white shadow-lg ${
-                      nextRoundInfo.projectedNumber === 0 ? 'bg-gradient-to-r from-red-500 to-purple-600' :
-                      nextRoundInfo.projectedNumber === 5 ? 'bg-gradient-to-r from-emerald-500 to-purple-600' :
-                      nextRoundInfo.projectedNumber % 2 !== 0 ? 'bg-emerald-500' : 'bg-red-500'
+                      Number(nextRoundInfo.projectedNumber) === 0 ? 'bg-gradient-to-r from-red-500 to-purple-600' :
+                      Number(nextRoundInfo.projectedNumber) === 5 ? 'bg-gradient-to-r from-emerald-500 to-purple-600' :
+                      !isNaN(Number(nextRoundInfo.projectedNumber)) && Number(nextRoundInfo.projectedNumber) % 2 !== 0 ? 'bg-emerald-500' : 'bg-red-500'
                     }`}>
                       {nextRoundInfo.projectedNumber ?? '-'}
                     </div>
@@ -1864,8 +2141,8 @@ export function GameControlCenterView({
         </div>
       )}
 
-      {/* JET & CRASH & PUSHPARANI OVERRIDE PANEL (SCREENSHOTS 4 & 5) */}
-      {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin' || gameType === 'chicken-road') && (
+      {/* JET & CRASH & PUSHPARANI OVERRIDE PANEL (EXCLUDES CHICKEN ROAD) */}
+      {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (
         <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
@@ -1956,6 +2233,95 @@ export function GameControlCenterView({
             >
               SET TARGET
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* CHICKEN ROAD DEDICATED HOUSE ALGORITHM & OUTCOME MODE CONTROL */}
+      {gameType === 'chicken-road' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide flex items-center gap-2">
+                <span className="text-amber-500">🐔</span>
+                <span>CHICKEN ROAD 2 — HOUSE ALGORITHM &amp; OUTCOME MODE CONTROL</span>
+              </h3>
+              <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                Manage global RNG algorithm modes, house profit protection, and safe step probabilities across all player sessions
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase ${
+                activeOverrideStatus.includes('FORCED') ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              }`}>
+                {activeOverrideStatus}
+              </span>
+              {activeOverrideStatus.includes('FORCED') && (
+                <button
+                  onClick={handleClearOverride}
+                  className="px-3 py-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-extrabold text-[10px] rounded-xl shadow-xs transition-all flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🔄</span>
+                  <span>RESET TO AUTOMATIC RTP</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <span className="text-xs font-extrabold text-slate-700 block mb-2 uppercase tracking-wider">
+              HOUSE OUTCOME ALGORITHM MODES
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => handleSetTextOverride('AUTO_RTP')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  !activeOverrideStatus.includes('FORCED')
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">🤖</span>
+                  <span className="text-[9px] font-black bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full uppercase">DEFAULT</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">AUTOMATIC RTP ENGINE</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Standard RTP ({rtp}%) with balanced vehicle hit probabilities per difficulty</div>
+              </button>
+
+              <button
+                onClick={() => handleSetTextOverride('FORCE_LOSS')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  activeOverrideStatus.includes('LOSS') || activeOverrideStatus.includes('CRASH')
+                    ? 'bg-rose-50 border-rose-300 text-rose-900 ring-2 ring-rose-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">🚗</span>
+                  <span className="text-[9px] font-black bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full uppercase">PROTECT HOUSE</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">HOUSE PROFIT BOOST (CAR ACCIDENTS)</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Increases obstacle vehicle hit rate on advanced checkpoints to protect house profit</div>
+              </button>
+
+              <button
+                onClick={() => handleSetTextOverride('FORCE_WIN')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  activeOverrideStatus.includes('WIN') || activeOverrideStatus.includes('SAFE')
+                    ? 'bg-amber-50 border-amber-300 text-amber-900 ring-2 ring-amber-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">🐔</span>
+                  <span className="text-[9px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase">HIGH ENGAGEMENT</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">PLAYER SAFE CROSSING BOOST</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Boosts safe lane crossing probability for player engagement</div>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -2251,7 +2617,186 @@ export function GameControlCenterView({
             )
           )}
 
-          {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin' || gameType === 'chicken-road') && (
+          {/* CHICKEN ROAD SPECIFIC ROUNDS HISTORY TABLE */}
+          {gameType === 'chicken-road' && (
+            <div className="space-y-3">
+              {/* FILTER BAR */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-64">
+                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 text-xs">🔍</span>
+                    <input
+                      type="text"
+                      value={chickenRoadSearch}
+                      onChange={(e) => setChickenRoadSearch(e.target.value)}
+                      placeholder="Search player, email or round ID..."
+                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <select
+                    value={chickenRoadDiffFilter}
+                    onChange={(e) => setChickenRoadDiffFilter(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Difficulties</option>
+                    <option value="easy">Easy Mode</option>
+                    <option value="medium">Medium Mode</option>
+                    <option value="hard">Hard Mode</option>
+                    <option value="hardcore">Hardcore Mode</option>
+                  </select>
+
+                  <select
+                    value={chickenRoadStatusFilter}
+                    onChange={(e) => setChickenRoadStatusFilter(e.target.value)}
+                    className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                  >
+                    <option value="ALL">All Round Statuses</option>
+                    <option value="CASHED_OUT">Cashed Out (Won)</option>
+                    <option value="CRASHED">Car Hit (Lost)</option>
+                    <option value="IN_PLAY">In Play (Running)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    onClick={() => fetchChickenRoadData()}
+                    className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 font-extrabold text-xs rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>🔄</span>
+                    <span>Refresh ({chickenRoadTotalRounds} Total)</span>
+                  </button>
+                </div>
+              </div>
+
+              {chickenRoadLoading ? (
+                <div className="py-12 text-center text-slate-400 font-bold text-xs">
+                  Loading Chicken Road player rounds...
+                </div>
+              ) : chickenRoadRounds.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                  <div className="text-3xl mb-2">🐔</div>
+                  <p className="text-sm font-bold text-slate-700">No Chicken Road rounds recorded yet</p>
+                  <p className="text-xs text-slate-400 mt-1">Real player bets, checkpoints reached, multipliers, and house profit/loss will display here live.</p>
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs font-medium text-slate-700">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
+                    <tr>
+                      <th className="py-2.5 px-4">Round ID & Time</th>
+                      <th className="py-2.5 px-4">Player Details</th>
+                      <th className="py-2.5 px-4">Difficulty</th>
+                      <th className="py-2.5 px-4">Entry Bet (₹)</th>
+                      <th className="py-2.5 px-4">Checkpoint</th>
+                      <th className="py-2.5 px-4">Multiplier</th>
+                      <th className="py-2.5 px-4">Round Result</th>
+                      <th className="py-2.5 px-4">Payout (₹)</th>
+                      <th className="py-2.5 px-4">House Profit/Loss</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {chickenRoadRounds.map((r: any) => {
+                      const roundId = r.publicId || r.id?.substring(0, 8) || '#CHICKEN';
+                      const userName = r.user?.name || r.user?.email || r.userId?.substring(0, 8) || 'Player';
+                      const userEmail = r.user?.email || r.userId?.substring(0, 8) || '';
+                      const diff = String(r.difficultyId || r.difficulty || 'easy').toUpperCase();
+                      const betAmount = Number(r.betAmount || r.amount || 0);
+                      const checkpoint = r.currentCheckpoint ?? r.checkpoint ?? 0;
+                      const multiplier = Number(r.currentMultiplier || r.multiplier || 1.00);
+                      const status = String(r.status || r.result || 'RUNNING').toUpperCase();
+                      const grossPayout = Number(r.gameResult?.grossPayout || (status.includes('CASHED') || status.includes('WIN') ? betAmount * multiplier : 0));
+                      const houseProfit = betAmount - grossPayout;
+
+                      const isCashedOut = status.includes('CASHED') || status.includes('WIN');
+                      const isCrashed = status.includes('CRASH') || status.includes('LOSS');
+
+                      const diffBadge =
+                        diff === 'EASY'
+                          ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          : diff === 'MEDIUM'
+                          ? 'bg-amber-100 text-amber-800 border-amber-200'
+                          : diff === 'HARD'
+                          ? 'bg-orange-100 text-orange-800 border-orange-200'
+                          : 'bg-rose-100 text-rose-800 border-rose-200';
+
+                      const dateStr = r.createdAt ? new Date(r.createdAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recently';
+
+                      return (
+                        <tr key={r.id || roundId} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-4">
+                            <span className="font-bold text-blue-600 block">{roundId}</span>
+                            <span className="text-[10px] text-slate-400 font-mono block">{dateStr}</span>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className="font-extrabold text-slate-900 block">{userName}</span>
+                            <span className="text-[10px] text-slate-400 block">{userEmail}</span>
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border ${diffBadge}`}>
+                              {diff}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 font-black text-slate-900">
+                            ₹{betAmount.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-slate-700">
+                            🏁 Step {checkpoint} / 25
+                          </td>
+                          <td className="py-2.5 px-4 font-black text-amber-600 font-mono">
+                            {multiplier.toFixed(2)}x
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-[9px] font-black px-2.5 py-1 rounded-full uppercase ${
+                              isCashedOut
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : isCrashed
+                                ? 'bg-rose-100 text-rose-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {isCashedOut ? '🟢 CASHED OUT' : isCrashed ? '🔴 CAR HIT (LOST)' : '🟡 IN PLAY'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 font-black text-emerald-600">
+                            ₹{grossPayout.toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-4 font-black">
+                            <span className={houseProfit >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                              {houseProfit >= 0 ? `+₹${houseProfit.toFixed(2)}` : `-₹${Math.abs(houseProfit).toFixed(2)}`}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+
+              {/* PAGINATION FOOTER */}
+              {chickenRoadTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs font-bold text-slate-600">
+                  <span>Page {chickenRoadPage} of {chickenRoadTotalPages} ({chickenRoadTotalRounds} Total Rounds)</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={chickenRoadPage <= 1}
+                      onClick={() => setChickenRoadPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded-lg cursor-pointer"
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      disabled={chickenRoadPage >= chickenRoadTotalPages}
+                      onClick={() => setChickenRoadPage((p) => Math.min(chickenRoadTotalPages, p + 1))}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded-lg cursor-pointer"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(gameType === 'jet' || gameType === 'crash' || gameType === 'pushparani' || gameType === 'spin') && (
             <table className="w-full text-left text-xs font-medium text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
                 <tr>

@@ -49,10 +49,10 @@ export function CrashGame() {
   const [activePanelTab, setActivePanelTab] = useState<1 | 2>(1);
 
   // Multiplier history list from API
-  const [historyPills, setHistoryPills] = useState<number[]>([3.81, 1.44, 2.31, 1.85, 4.20, 1.12, 12.40, 2.05]);
+  const [historyPills, setHistoryPills] = useState<number[]>([]);
 
   // Round Engine state
-  const [roundId, setRoundId] = useState<string>('22040902');
+  const [roundId, setRoundId] = useState<string>('—');
   const [status, setStatus] = useState<'BETTING_OPEN' | 'FLYING' | 'CRASHED'>('BETTING_OPEN');
   const [secondsRemaining, setSecondsRemaining] = useState<number>(6);
   const [currentMultiplier, setCurrentMultiplier] = useState<number>(1.0);
@@ -117,7 +117,7 @@ export function CrashGame() {
         const data = await res.json();
 
         if (data.round) {
-          setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '22040902'));
+          setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '—'));
           setStatus(data.round.status as any);
           setCrashedAt(parseFloat(data.round.crashMultiplier || '1.0'));
         }
@@ -129,7 +129,7 @@ export function CrashGame() {
         const multVal = parseFloat(data.currentMultiplier || '1.0');
         setCurrentMultiplier(multVal);
 
-        if (Array.isArray(data.history) && data.history.length > 0) {
+        if (Array.isArray(data.history)) {
           setHistoryPills(data.history);
         }
 

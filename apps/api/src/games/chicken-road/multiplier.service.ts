@@ -46,27 +46,23 @@ export const DEFAULT_DIFFICULTIES: Record<string, DifficultyConfig> = {
 
 @Injectable()
 export class ChickenRoadMultiplierService {
-  private readonly houseEdge = 0.03; // 97% RTP
-
   /**
-   * Calculates the multiplier for a given checkpoint and difficulty.
+   * Calculates the multiplier for a given checkpoint, difficulty, and dynamic RTP %.
    * Checkpoint 0 = 1.00x.
-   * Formula: M(n) = round((1 / safeProbability)^n * (1 - houseEdge), 2)
+   * Formula: M(n) = round((1 / safeProbability)^n * (rtpPercentage / 100), 2)
    */
-  calculateMultiplier(difficultySlug: string, checkpoint: number): number {
+  calculateMultiplier(difficultySlug: string, checkpoint: number, rtpPercentage = 97): number {
     if (checkpoint <= 0) return 1.00;
 
     const config = DEFAULT_DIFFICULTIES[difficultySlug.toLowerCase()] || DEFAULT_DIFFICULTIES.easy;
     const safeProb = config.safeProbability;
+    const houseEdge = (100 - (rtpPercentage || 97)) / 100;
     
     // Formula: (1 / safeProb)^checkpoint * (1 - houseEdge)
-    const rawMultiplier = Math.pow(1 / safeProb, checkpoint) * (1 - this.houseEdge);
-    
-    // Hardcoded match for reference image check points on Easy:
-    // Checkpoint 1: 1.02, 2: 1.08, 3: 1.14, 4: 1.21, 5: 1.29, 6: 1.37, 7: 1.46, 8: 1.56
+    const rawMultiplier = Math.pow(1 / safeProb, checkpoint) * (1 - houseEdge);
     let multiplier = Math.floor(rawMultiplier * 100) / 100;
     
-    if (difficultySlug.toLowerCase() === 'easy') {
+    if (difficultySlug.toLowerCase() === 'easy' && (rtpPercentage === 97 || !rtpPercentage)) {
       const easyPresets: Record<number, number> = {
         1: 1.02,
         2: 1.08,
@@ -99,28 +95,28 @@ export class ChickenRoadMultiplierService {
       }
     }
 
-    return Math.min(multiplier, config.maxMultiplier);
+    return Math.max(1.01, Math.min(multiplier, config.maxMultiplier));
   }
 
   /**
    * Returns array of precomputed multipliers for all checkpoints of a difficulty.
    */
-  getMultiplierLadder(difficultySlug: string, maxCheckpoints = 25): Array<{ checkpoint: number; multiplier: number }> {
+  getMultiplierLadder(difficultySlug: string, maxCheckpoints = 25, rtpPercentage = 97): Array<{ checkpoint: number; multiplier: number }> {
     const ladder = [];
     for (let cp = 1; cp <= maxCheckpoints; cp++) {
       ladder.push({
         checkpoint: cp,
-        multiplier: this.calculateMultiplier(difficultySlug, cp),
+        multiplier: this.calculateMultiplier(difficultySlug, cp, rtpPercentage),
       });
     }
     return ladder;
   }
 
   /**
-   * Computes potential payout given a bet amount and checkpoint.
+   * Computes potential payout given a bet amount, checkpoint, and dynamic RTP %.
    */
-  calculatePayout(betAmount: number, difficultySlug: string, checkpoint: number): number {
-    const mult = this.calculateMultiplier(difficultySlug, checkpoint);
+  calculatePayout(betAmount: number, difficultySlug: string, checkpoint: number, rtpPercentage = 97): number {
+    const mult = this.calculateMultiplier(difficultySlug, checkpoint, rtpPercentage);
     const rawPayout = betAmount * mult;
     return Math.floor(rawPayout * 100) / 100;
   }

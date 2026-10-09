@@ -44,12 +44,19 @@ export default function WalletPage() {
   const [historyWithdrawals, setHistoryWithdrawals] = useState<any[]>([]);
   const [historyTab, setHistoryTab] = useState<'withdrawals' | 'deposits' | 'ledger'>('withdrawals');
 
-  const fetchWalletData = async (userId: string) => {
+  const fetchWalletData = async (userId?: string) => {
     try {
       const apiBase = getApiBaseUrl();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const balUrl = userId ? `${apiBase}/wallet/balance?userId=${userId}` : `${apiBase}/wallet/balance`;
+      const histUrl = userId ? `${apiBase}/wallet/history?userId=${userId}` : `${apiBase}/wallet/history`;
+
       const [balRes, histRes] = await Promise.all([
-        fetch(`${apiBase}/wallet/balance?userId=${userId}`).then(r => r.json()).catch(() => null),
-        fetch(`${apiBase}/wallet/history?userId=${userId}`).then(r => r.json()).catch(() => null),
+        fetch(balUrl, { headers }).then(r => r.json()).catch(() => null),
+        fetch(histUrl, { headers }).then(r => r.json()).catch(() => null),
       ]);
 
       if (balRes) {
@@ -73,9 +80,9 @@ export default function WalletPage() {
 
   useEffect(() => {
     const savedUser = localStorage.getItem('rivexa_user');
-    const u = savedUser ? JSON.parse(savedUser) : { id: '00000000-0000-0000-0000-000000000000' };
+    const u = savedUser ? JSON.parse(savedUser) : null;
     setUser(u);
-    fetchWalletData(u.id);
+    fetchWalletData(u?.id);
   }, []);
 
   const handleDepositSubmit = async (e: React.FormEvent) => {
@@ -85,11 +92,15 @@ export default function WalletPage() {
 
     try {
       const apiBase = getApiBaseUrl();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${apiBase}/wallet/deposit/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          userId: user?.id || '00000000-0000-0000-0000-000000000000',
+          userId: user?.id,
           amount: parseFloat(depositAmount),
           utrNumber: depositUtr,
           paymentMethod,
@@ -107,7 +118,7 @@ export default function WalletPage() {
           router.push(`/deposit/checkout/${data.depositId}`);
         }, 1000);
       } else {
-        fetchWalletData(user.id);
+        fetchWalletData(user?.id);
       }
     } catch (err: any) {
       setDepositMessage({ text: `❌ ${err.message}`, type: 'error' });
@@ -123,11 +134,15 @@ export default function WalletPage() {
 
     try {
       const apiBase = getApiBaseUrl();
+      const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const res = await fetch(`${apiBase}/wallet/withdraw/request`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          userId: user?.id || '00000000-0000-0000-0000-000000000000',
+          userId: user?.id,
           amount: parseFloat(withdrawAmount),
           upiId: withdrawUpiId,
           bankName,

@@ -91,7 +91,7 @@ export type GameStateEnum =
 
 export function AndarBaharGame() {
   const { user, balance: authBalance, refreshBalance } = useAuth();
-  const userId = user?.id || 'demo_user';
+  const userId = user?.id;
 
   const [balanceState, setBalanceState] = useState<number>(0);
   const balance = authBalance ?? balanceState;
@@ -177,7 +177,15 @@ export function AndarBaharGame() {
   const fetchGameState = async () => {
     try {
       const apiBase = getApiBaseUrl();
-      const res = await fetch(`${apiBase}/games/andar-bahar/state?userId=${userId}`);
+      const token = typeof window !== 'undefined' ? localStorage.getItem('rivexa_token') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const url = userId
+        ? `${apiBase}/games/andar-bahar/state?userId=${userId}`
+        : `${apiBase}/games/andar-bahar/state`;
+
+      const res = await fetch(url, { headers });
       if (!res.ok) return;
       const data = await res.json();
       if (!data.status) return;

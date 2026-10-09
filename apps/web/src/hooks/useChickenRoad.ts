@@ -24,9 +24,20 @@ export const useChickenRoad = () => {
   // Lock ref to prevent concurrent multi-clicks or rapid double-jumping
   const isPendingRef = useRef(false);
 
-  // Always reset game to fresh start on mount/refresh
+  // Always reset game to fresh start on mount/refresh & fetch dynamic bet limits
   useEffect(() => {
     resetGame();
+    chickenRoadApi.getConfig().then((res: any) => {
+      if (res?.limits) {
+        const minB = Number(res.limits.minBet) || 10;
+        const maxB = Number(res.limits.maxBet) || 100000;
+        useChickenRoadStore.setState((state) => ({
+          minBet: minB,
+          maxBet: maxB,
+          betAmount: Math.max(minB, Math.min(maxB, state.betAmount)),
+        }));
+      }
+    }).catch(() => {});
     chickenRoadApi.getActiveRound().catch(() => {});
   }, [resetGame]);
 
@@ -44,15 +55,24 @@ export const useChickenRoad = () => {
     socket.connect();
 
     socket.on('game.checkpoint.safe', (data) => {
-      onCheckpointSafe(data);
+      const curRoundId = useChickenRoadStore.getState().roundId;
+      if (data?.roundId && curRoundId && data.roundId === curRoundId) {
+        onCheckpointSafe(data);
+      }
     });
 
     socket.on('game.round.crashed', (data) => {
-      onRoundCrashed(data);
+      const curRoundId = useChickenRoadStore.getState().roundId;
+      if (data?.roundId && curRoundId && data.roundId === curRoundId) {
+        onRoundCrashed(data);
+      }
     });
 
     socket.on('game.round.cashed_out', (data) => {
-      onRoundCashedOut(data);
+      const curRoundId = useChickenRoadStore.getState().roundId;
+      if (data?.roundId && curRoundId && data.roundId === curRoundId) {
+        onRoundCashedOut(data);
+      }
     });
 
     return () => {
@@ -66,9 +86,20 @@ export const useChickenRoad = () => {
   const handlePlay = useCallback(async () => {
     if (isPendingRef.current) return;
     const curStatus = useChickenRoadStore.getState().status;
-    if (curStatus === 'MOVING' || curStatus === 'RUNNING') return;
+    const cooldown = useChickenRoadStore.getState().playCooldown;
+    if (curStatus === 'MOVING' || curStatus === 'RUNNING' || cooldown > 0) return;
 
     const currentBal = authBalance !== undefined && authBalance !== null ? authBalance : (useChickenRoadStore.getState().walletBalance || 0);
+
+    const minBet = useChickenRoadStore.getState().minBet || 10;
+    const maxBet = useChickenRoadStore.getState().maxBet || 100000;
+
+    if (betAmount < minBet || betAmount > maxBet) {
+      if (typeof window !== 'undefined') {
+        alert(`Invalid bet amount! Bet must be between ₹${minBet} and ₹${maxBet}.`);
+      }
+      return;
+    }
 
     // Validate insufficient balance before placing bet
     if (currentBal < betAmount) {
@@ -156,8 +187,14 @@ export const useChickenRoad = () => {
         setWalletBalance(authBalance);
       }
       const errMsg = err?.response?.data?.message || err?.message || 'Failed to place bet';
-      if (typeof window !== 'undefined') {
-        alert(`Bet Failed: ${errMsg}`);
+      if (errMsg.includes('ACTIVE_ROUND_EXISTS') || err?.response?.status === 409) {
+        if (typeof window !== 'undefined') {
+          alert('Active round in progress on another device or tab. Please complete that active round first.');
+        }
+      } else {
+        if (typeof window !== 'undefined') {
+          alert(`Bet Failed: ${errMsg}`);
+        }
       }
     } finally {
       setTimeout(() => {

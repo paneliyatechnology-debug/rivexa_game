@@ -73,12 +73,10 @@ export function AviatorGame() {
   const [mobileTab, setMobileTab] = useState<'game' | 'bets'>('game');
 
   // History Pills from API
-  const [historyPills, setHistoryPills] = useState<number[]>([
-    1.25, 2.83, 1.43, 1.85, 7.98, 2.68, 1.41, 1.85, 5.01, 1.01, 3.48, 2.85, 5.52, 5.59, 13.23, 1.01, 2.73, 4.28, 1.17, 1.43, 1.12, 1.75, 1.06, 14.01, 2.38
-  ]);
+  const [historyPills, setHistoryPills] = useState<number[]>([]);
 
   // Round Engine State from API
-  const [roundId, setRoundId] = useState<string>('5863B37A');
+  const [roundId, setRoundId] = useState<string>('—');
   const [status, setStatus] = useState<'BETTING_OPEN' | 'FLYING' | 'CRASHED'>('BETTING_OPEN');
   const [secondsRemaining, setSecondsRemaining] = useState<number>(6);
   const [currentMultiplier, setCurrentMultiplier] = useState<number>(1.0);
@@ -223,7 +221,7 @@ export function AviatorGame() {
       }
       prevStatusRef.current = newStatus;
 
-      setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '5863B37A'));
+      setRoundId(data.round.roundNumber ? String(data.round.roundNumber) : (data.round.id ? data.round.id.slice(0, 8).toUpperCase() : '—'));
       setStatus(newStatus);
       setCrashedAt(parseFloat(data.round.crashMultiplier || '1.0'));
     }
@@ -235,7 +233,7 @@ export function AviatorGame() {
     const multVal = parseFloat(data.currentMultiplier || '1.0');
     setCurrentMultiplier(multVal);
 
-    if (Array.isArray(data.history) && data.history.length > 0) {
+    if (Array.isArray(data.history)) {
       setHistoryPills(data.history);
     }
 

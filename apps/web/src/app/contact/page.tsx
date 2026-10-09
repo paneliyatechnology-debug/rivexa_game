@@ -202,7 +202,7 @@ export default function ContactPage() {
               </label>
               <input
                 type="text"
-                placeholder="e.g. Sharma ji"
+                placeholder="e.g. Rahul / User ID"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required

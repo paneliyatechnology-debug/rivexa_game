@@ -105,8 +105,12 @@ export interface ActiveSessionState {
   plays: HiloPlayItem[];
 }
 
+import { useGameTokenValidation } from '@/hooks/useGameTokenValidation';
+import { InvalidCredentialsModal } from './InvalidCredentialsModal';
+
 export default function HiloGame() {
   const { user, balance: authBalance, refreshBalance, loading: authLoading } = useAuth();
+  const { isInvalid, errorMessage } = useGameTokenValidation();
   const currentBalance = authBalance !== undefined && authBalance !== null ? authBalance : 0;
 
   // Sound and mounting
@@ -1355,6 +1359,11 @@ export default function HiloGame() {
 
   return (
     <div className="w-full min-h-screen bg-[#050B20] text-gray-100 flex flex-col font-sans selection:bg-[#287BFF]/30 selection:text-[#00D9FF] overflow-x-hidden">
+      {/* INVALID TOKEN ERROR OVERLAY */}
+      <InvalidCredentialsModal
+        isOpen={isInvalid}
+        message={errorMessage || 'Invalid user login credentials(Error:45)'}
+      />
 
       {/* ─── SLIDE-OUT MOBILE NAVIGATION DRAWER (GameHub Sidebar) ─── */}
       <AnimatePresence>
@@ -1567,7 +1576,7 @@ export default function HiloGame() {
                 <User className="w-4 h-4 text-white" />
               </div>
               <span className="text-xs font-bold text-slate-200 hover:text-white flex items-center gap-1">
-                <span>{user?.name || (user as any)?.username || (user?.email ? user.email.split('@')[0] : 'Sharma ji')}</span>
+                <span>{user?.name || (user as any)?.username || user?.phone || (user?.email ? user.email.split('@')[0] : 'Player')}</span>
                 <ChevronDown className="w-3 h-3 text-[#7285AE]" />
               </span>
             </Link>

@@ -1,13 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { motion } from 'motion/react';
 import { GAMEHUB_ASSETS } from '@/config/gamehub-assets';
 import { GameHubButton } from '@/components/gamehub/GameHubButton';
 import { GameHubIcon } from '@/components/gamehub/GameHubIcon';
-import { ArrowRight, Flame, Star, Zap } from 'lucide-react';
+import { ArrowRight, Flame, Star, Zap, Loader2 } from 'lucide-react';
+import { useGameSession } from '@/hooks/useGameSession';
+import { useAuth } from '@/context/AuthContext';
 
 /**
  * Maps each game slug to its Figma SVG card key + accent styling.
@@ -171,6 +173,42 @@ interface FeaturedGamesProps {
 }
 
 export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
+  const { launchGame } = useGameSession();
+  const { isAuthenticated } = useAuth();
+  const [launchingSlug, setLaunchingSlug] = useState<string | null>(null);
+
+  const handleGameCardClick = async (e: React.MouseEvent, gameSlug: string) => {
+    e.preventDefault();
+
+    // If not logged in, allow guest preview by navigating directly to game page
+    if (!isAuthenticated) {
+      if (typeof window !== 'undefined') {
+        window.location.href = `/play/${gameSlug}`;
+      }
+      return;
+    }
+
+    setLaunchingSlug(gameSlug);
+    try {
+      const result = await launchGame(gameSlug, 'REAL', 'INR');
+      if (result && result.launchUrl) {
+        if (typeof window !== 'undefined') {
+          window.location.href = result.launchUrl;
+        }
+      } else {
+        if (typeof window !== 'undefined') {
+          window.location.href = `/play/${gameSlug}`;
+        }
+      }
+    } catch {
+      if (typeof window !== 'undefined') {
+        window.location.href = `/play/${gameSlug}`;
+      }
+    } finally {
+      setLaunchingSlug(null);
+    }
+  };
+
   // Deduplicate games by slug to ensure clean rendering
   const seenSlugs = new Set<string>();
   const uniqueGames = games.filter((g) => {
@@ -222,8 +260,8 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
           {filtered.map((game: any, i: number) => {
             const meta = GAME_META[game.slug] ?? DEFAULT_GAME_META;
-            const isExternal = EXTERNAL_GAMES.has(game.slug);
             const desc = GAME_DESC[game.slug] ?? game.description?.split('...')[0] ?? 'Classic Game';
+            const isLaunching = launchingSlug === game.slug;
 
             // Resolve the individual SVG card from the Figma kit
             const svgSrc =
@@ -237,17 +275,19 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: Math.min(i * 0.055, 0.4), duration: 0.4, ease: 'easeOut' }}
               >
-                <Link
+                <a
                   href={`/play/${game.slug}`}
-                  onClick={(e) => {
-                    if (isExternal && typeof window !== 'undefined' && window.innerWidth >= 768) {
-                      e.preventDefault();
-                      window.open(`/play/${game.slug}`, '_blank');
-                    }
-                  }}
-                  className={`group relative flex flex-col rounded-[20px] bg-gradient-to-b ${meta.gradient} border ${meta.border} shadow-lg ${meta.shadow} overflow-hidden hover:-translate-y-1.5 hover:shadow-xl active:scale-95 transition-all duration-300 cursor-pointer`}
+                  onClick={(e) => handleGameCardClick(e, game.slug)}
+                  className={`group relative flex flex-col rounded-[20px] bg-gradient-to-b ${meta.gradient} border ${meta.border} shadow-lg ${meta.shadow} overflow-hidden hover:-translate-y-1.5 hover:shadow-xl active:scale-95 transition-all duration-300 cursor-pointer ${isLaunching ? 'pointer-events-none opacity-80' : ''}`}
                   style={{ boxShadow: `0 4px 20px -4px ${meta.glowHex}22` }}
                 >
+                  {/* Loading overlay */}
+                  {isLaunching && (
+                    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 rounded-[20px]">
+                      <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    </div>
+                  )}
+
                   {/* Badge */}
                   {game.badge && (
                     <div className="absolute top-2.5 left-2.5 z-20">
@@ -295,14 +335,19 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
                         Min ₹{game.minBet || 10}
                       </span>
                       <span className={`text-[10px] font-black px-3 py-1 rounded-full ${meta.ctaStyle} flex items-center gap-1 group-hover:brightness-110 transition-all shadow-md`}>
-                        Play Now <ArrowRight className="w-2.5 h-2.5 stroke-[3]" />
+                        {isLaunching ? (
+                          <><Loader2 className="w-2.5 h-2.5 animate-spin" /> Loading…</>
+                        ) : (
+                          <>Play Now <ArrowRight className="w-2.5 h-2.5 stroke-[3]" /></>
+                        )}
                       </span>
                     </div>
                   </div>
-                </Link>
+                </a>
               </motion.div>
             );
           })}
+
         </div>
       )}
     </div>

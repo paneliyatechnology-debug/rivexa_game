@@ -25,11 +25,13 @@ import { SportsModule } from './sports/sports.module.js';
 import { CricketDataModule } from './modules/cricket-data/cricket-data.module.js';
 import { CricketMarketsModule } from './modules/cricket-markets/cricket-markets.module.js';
 import { TenantModule } from './tenant/tenant.module.js';
+import { GameSessionsModule } from './game-sessions/game-sessions.module.js';
 
 @Module({
   imports: [
     DatabaseModule,
     AuthModule,
+    GameSessionsModule,
     WalletModule,
     ReferralModule,
     MinesModule,

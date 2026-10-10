@@ -61,20 +61,21 @@ export function QuickActions() {
         >
           <Link
             href={action.href}
-            className={`relative flex flex-col items-center text-center gap-2 p-3 sm:p-4 rounded-[20px] bg-gradient-to-br ${action.gradient} border ${action.border} shadow-lg ${action.glow} hover:shadow-xl hover:-translate-y-1 active:scale-95 transition-all duration-300 group overflow-hidden`}
+            className={`relative flex flex-col items-center text-center gap-2 p-3 sm:p-4 rounded-[20px] bg-gradient-to-br ${action.gradient} border ${action.border} shadow-lg ${action.glow} hover:shadow-2xl hover:-translate-y-1 active:scale-95 transition-all duration-300 group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-white/35 before:to-transparent`}
           >
             {/* Ambient glow */}
             <div
-              className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl opacity-30 pointer-events-none"
+              className="absolute -top-4 -right-4 w-16 h-16 rounded-full blur-2xl opacity-40 group-hover:opacity-75 transition-opacity pointer-events-none"
               style={{ backgroundColor: action.iconColor }}
             />
 
-            {/* Icon from asset pack */}
+            {/* Icon from asset pack with neon halo */}
             <div
-              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center border"
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center border shadow-inner transition-transform group-hover:scale-110"
               style={{
-                backgroundColor: `${action.iconColor}18`,
-                borderColor: `${action.iconColor}40`,
+                backgroundColor: `${action.iconColor}22`,
+                borderColor: `${action.iconColor}60`,
+                boxShadow: `0 0 16px ${action.iconColor}44`,
               }}
             >
               <GameHubIcon
@@ -88,7 +89,7 @@ export function QuickActions() {
 
             {/* Label */}
             <div>
-              <p className="text-[10px] sm:text-xs font-black text-white leading-tight">{action.label}</p>
+              <p className="text-[10px] sm:text-xs font-black text-white leading-tight group-hover:text-cyan-200 transition-colors drop-shadow-sm">{action.label}</p>
               <p className="text-[9px] text-[#7285AE] hidden sm:block mt-0.5">{action.subLabel}</p>
             </div>
 

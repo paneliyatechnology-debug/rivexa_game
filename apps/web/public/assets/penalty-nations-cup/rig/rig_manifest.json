@@ -1,0 +1,281 @@
+{
+  "imageWidth": 810,
+  "imageHeight": 1024,
+  "parts": {
+    "head": {
+      "file": "/assets/penalty-nations-cup/rig/head.png",
+      "bbox": [
+        318,
+        24,
+        493,
+        243
+      ],
+      "size": [
+        175,
+        219
+      ],
+      "origPivot": [
+        405,
+        225
+      ],
+      "pivotInCrop": [
+        87,
+        201
+      ],
+      "pivotNormalized": [
+        0.49714285714285716,
+        0.0821917808219178
+      ]
+    },
+    "torso": {
+      "file": "/assets/penalty-nations-cup/rig/torso.png",
+      "bbox": [
+        263,
+        213,
+        548,
+        498
+      ],
+      "size": [
+        285,
+        285
+      ],
+      "origPivot": [
+        405,
+        490
+      ],
+      "pivotInCrop": [
+        142,
+        277
+      ],
+      "pivotNormalized": [
+        0.4982456140350877,
+        0.028070175438596467
+      ]
+    },
+    "hips": {
+      "file": "/assets/penalty-nations-cup/rig/hips.png",
+      "bbox": [
+        222,
+        473,
+        589,
+        678
+      ],
+      "size": [
+        367,
+        205
+      ],
+      "origPivot": [
+        405,
+        520
+      ],
+      "pivotInCrop": [
+        183,
+        47
+      ],
+      "pivotNormalized": [
+        0.4986376021798365,
+        0.7707317073170732
+      ]
+    },
+    "arm_left_upper": {
+      "file": "/assets/penalty-nations-cup/rig/arm_left_upper.png",
+      "bbox": [
+        151,
+        218,
+        318,
+        393
+      ],
+      "size": [
+        167,
+        175
+      ],
+      "origPivot": [
+        275,
+        245
+      ],
+      "pivotInCrop": [
+        124,
+        27
+      ],
+      "pivotNormalized": [
+        0.7425149700598802,
+        0.8457142857142858
+      ]
+    },
+    "arm_left_lower": {
+      "file": "/assets/penalty-nations-cup/rig/arm_left_lower.png",
+      "bbox": [
+        9,
+        343,
+        198,
+        488
+      ],
+      "size": [
+        189,
+        145
+      ],
+      "origPivot": [
+        175,
+        370
+      ],
+      "pivotInCrop": [
+        166,
+        27
+      ],
+      "pivotNormalized": [
+        0.8783068783068783,
+        0.8137931034482758
+      ]
+    },
+    "arm_right_upper": {
+      "file": "/assets/penalty-nations-cup/rig/arm_right_upper.png",
+      "bbox": [
+        493,
+        218,
+        660,
+        393
+      ],
+      "size": [
+        167,
+        175
+      ],
+      "origPivot": [
+        535,
+        245
+      ],
+      "pivotInCrop": [
+        42,
+        27
+      ],
+      "pivotNormalized": [
+        0.25149700598802394,
+        0.8457142857142858
+      ]
+    },
+    "arm_right_lower": {
+      "file": "/assets/penalty-nations-cup/rig/arm_right_lower.png",
+      "bbox": [
+        613,
+        343,
+        801,
+        487
+      ],
+      "size": [
+        188,
+        144
+      ],
+      "origPivot": [
+        635,
+        370
+      ],
+      "pivotInCrop": [
+        22,
+        27
+      ],
+      "pivotNormalized": [
+        0.11702127659574468,
+        0.8125
+      ]
+    },
+    "leg_left_upper": {
+      "file": "/assets/penalty-nations-cup/rig/leg_left_upper.png",
+      "bbox": [
+        208,
+        578,
+        383,
+        728
+      ],
+      "size": [
+        175,
+        150
+      ],
+      "origPivot": [
+        315,
+        610
+      ],
+      "pivotInCrop": [
+        107,
+        32
+      ],
+      "pivotNormalized": [
+        0.6114285714285714,
+        0.7866666666666666
+      ]
+    },
+    "leg_left_lower": {
+      "file": "/assets/penalty-nations-cup/rig/leg_left_lower.png",
+      "bbox": [
+        148,
+        693,
+        346,
+        1016
+      ],
+      "size": [
+        198,
+        323
+      ],
+      "origPivot": [
+        265,
+        710
+      ],
+      "pivotInCrop": [
+        117,
+        17
+      ],
+      "pivotNormalized": [
+        0.5909090909090909,
+        0.9473684210526316
+      ]
+    },
+    "leg_right_upper": {
+      "file": "/assets/penalty-nations-cup/rig/leg_right_upper.png",
+      "bbox": [
+        428,
+        578,
+        603,
+        728
+      ],
+      "size": [
+        175,
+        150
+      ],
+      "origPivot": [
+        495,
+        610
+      ],
+      "pivotInCrop": [
+        67,
+        32
+      ],
+      "pivotNormalized": [
+        0.38285714285714284,
+        0.7866666666666666
+      ]
+    },
+    "leg_right_lower": {
+      "file": "/assets/penalty-nations-cup/rig/leg_right_lower.png",
+      "bbox": [
+        465,
+        693,
+        673,
+        1017
+      ],
+      "size": [
+        208,
+        324
+      ],
+      "origPivot": [
+        545,
+        710
+      ],
+      "pivotInCrop": [
+        80,
+        17
+      ],
+      "pivotNormalized": [
+        0.38461538461538464,
+        0.9475308641975309
+      ]
+    }
+  }
+}

@@ -109,13 +109,13 @@ export function RecentActivity() {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
       {/* Recent Activity List */}
-      <div className="lg:col-span-2 rounded-2xl bg-[#08132C] border border-white/10 overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
+      <div className="lg:col-span-2 rounded-2xl bg-[#08132C] border border-[#00D9FF]/20 shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden relative before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/50 before:to-transparent before:z-10">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-white/10 bg-[#0B1A3A]/40">
           <div className="flex items-center gap-2">
-            <Activity className="w-4 h-4 text-cyan-400" />
+            <Activity className="w-4 h-4 text-cyan-400 drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
             <h3 className="text-sm font-black text-white">Recent Activity</h3>
           </div>
-          <Link href="/profile" className="flex items-center gap-1 text-xs font-bold text-cyan-400 hover:underline">
+          <Link href="/profile" className="flex items-center gap-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors drop-shadow-[0_0_6px_rgba(6,182,212,0.4)]">
             View All <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -134,7 +134,7 @@ export function RecentActivity() {
                 transition={{ delay: i * 0.07 }}
                 className="flex items-center gap-3 px-5 py-3.5 hover:bg-white/5 transition-colors"
               >
-                <div className="w-9 h-9 shrink-0 rounded-full bg-[#101C3A] border border-white/10 flex items-center justify-center text-base">
+                <div className="w-9 h-9 shrink-0 rounded-full bg-[#101C3A] border border-cyan-400/20 flex items-center justify-center text-base shadow-[0_0_8px_rgba(6,182,212,0.2)]">
                   {GAME_ICONS[act.gameName?.toLowerCase().replace(/\s/g, '-')] || '🎮'}
                 </div>
                 <div className="flex-1 min-w-0">
@@ -146,7 +146,7 @@ export function RecentActivity() {
                   </p>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className={`text-xs font-black ${act.result === 'won' ? 'text-emerald-400' : 'text-rose-500'}`}>
+                  <div className={`text-xs font-black ${act.result === 'won' ? 'text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'text-rose-500'}`}>
                     {act.result === 'won' ? `Won +₹${act.winAmount}` : `Lost -₹${act.betAmount}`}
                   </div>
                   <p className="text-[10px] text-[#7285AE] flex items-center justify-end gap-1 mt-0.5">
@@ -161,9 +161,9 @@ export function RecentActivity() {
       </div>
 
       {/* Top Winners Panel */}
-      <div className="rounded-2xl bg-[#08132C] border border-white/10 overflow-hidden">
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-white/10">
-          <Trophy className="w-4 h-4 text-amber-400" />
+      <div className="rounded-2xl bg-[#08132C] border border-amber-400/20 shadow-[0_4px_24px_rgba(0,0,0,0.4)] overflow-hidden relative before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-amber-400/50 before:to-transparent before:z-10">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-white/10 bg-[#0B1A3A]/40">
+          <Trophy className="w-4 h-4 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
           <h3 className="text-sm font-black text-white">Top Winners</h3>
         </div>
 

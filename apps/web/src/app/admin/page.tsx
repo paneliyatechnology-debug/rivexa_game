@@ -241,6 +241,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     { id: 'hilo', name: 'HILO Card Prediction', rtpPercentage: 96, minBet: 10, maxBet: 500000, isActive: true },
     { id: 'chicken-road', name: 'Chicken Road 2', rtpPercentage: 97, minBet: 10, maxBet: 100000, isActive: true },
     { id: 'coin-flip', name: '3D Coin Flip', rtpPercentage: 96, minBet: 10, maxBet: 50000, isActive: true },
+    { id: 'penalty-shootout', name: 'Penalty Nations Cup', rtpPercentage: 97, minBet: 10, maxBet: 100000, isActive: true },
   ]);
 
 
@@ -320,6 +321,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
     { id: 'pushparani', name: 'Pushparani', icon: '🚚' },
     { id: 'hilo', name: 'HILO Card Prediction', icon: '🃏' },
     { id: 'chicken-road', name: 'Chicken Road 2', icon: '🐔' },
+    { id: 'penalty-shootout', name: 'Penalty Nations Cup', icon: '⚽' },
     { id: 'sports', name: 'Sports Live & Betting', icon: '🏆' },
   ];
 
@@ -1629,6 +1631,8 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
                     'pushparani': '🚚',
                     'hilo': '🃏',
                     'chicken-road': '🐔',
+                    'penalty-shootout': '⚽',
+                    'penalty': '⚽',
                   };
                   return (
                     <button
@@ -5179,7 +5183,7 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
             );
           })()}
 
-          {['fast-parity', 'parity', 'mines', 'andar-bahar', 'jet', 'crash', 'spin', 'dice', 'pushparani', 'coin-flip', 'coinflip', 'hilo', 'chicken-road'].includes(activeTab) && (() => {
+          {['fast-parity', 'parity', 'mines', 'andar-bahar', 'jet', 'crash', 'spin', 'dice', 'pushparani', 'coin-flip', 'coinflip', 'hilo', 'chicken-road', 'penalty-shootout', 'penalty'].includes(activeTab) && (() => {
             const gameInfoMap: { [key: string]: { name: string; type: any; icon: string; subtitle: string; rtp: number; minBet: number; maxBet: number } } = {
               'fast-parity': { name: 'Fast Parity (30s) Control Center', type: 'fast-parity', icon: '⚡', subtitle: 'Manage Fast Parity (30s) winning chances (RTP %), house edge, min/max limits & manual period overrides', rtp: 95.0, minBet: 10, maxBet: 50000 },
               'parity': { name: 'Parity (1-Min) Control Center', type: 'parity', icon: '⏱️', subtitle: 'Manage Parity (1-Min / 60s) winning chances (RTP %), house edge, min/max limits & manual period overrides', rtp: 96.0, minBet: 10, maxBet: 100000 },
@@ -5194,6 +5198,8 @@ export default function AdminDashboardPage({ initialTab }: { initialTab?: string
               'coinflip': { name: 'RIVEXA 3D Coin Flip Control Center', type: 'coin-flip', icon: '🪙', subtitle: 'Manage Coin Flip winning chances (RTP %), house edge, win probability out of 5 flips, min/max limits & manual outcome overrides', rtp: 96.0, minBet: 10, maxBet: 50000 },
               'hilo': { name: 'HILO Card Prediction Control Center', type: 'hilo', icon: '🃏', subtitle: 'Manage HILO winning chances (RTP %), house edge, min/max limits & manual card prediction overrides', rtp: 96.0, minBet: 10, maxBet: 500000 },
               'chicken-road': { name: 'Chicken Road 2 Control Center', type: 'chicken-road', icon: '🐔', subtitle: 'Manage Chicken Road winning chances (RTP %), house edge, safe probabilities across Easy/Medium/Hard/Hardcore & min/max bet limits', rtp: 97.0, minBet: 10, maxBet: 100000 },
+              'penalty-shootout': { name: 'Penalty Nations Cup Control Center', type: 'penalty-shootout', icon: '⚽', subtitle: 'Manage Penalty Nations Cup winning chances (RTP %), house edge, keeper save probabilities across Easy/Medium/Hard/Hardcore & min/max bet limits', rtp: 97.0, minBet: 10, maxBet: 100000 },
+              'penalty': { name: 'Penalty Nations Cup Control Center', type: 'penalty-shootout', icon: '⚽', subtitle: 'Manage Penalty Nations Cup winning chances (RTP %), house edge, keeper save probabilities across Easy/Medium/Hard/Hardcore & min/max bet limits', rtp: 97.0, minBet: 10, maxBet: 100000 },
             };
             const info = gameInfoMap[activeTab];
             if (!info) return null;

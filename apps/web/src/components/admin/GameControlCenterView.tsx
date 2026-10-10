@@ -6,7 +6,7 @@ import { getApiBaseUrl } from '@/lib/config';
 interface GameControlCenterViewProps {
   gameId: string;
   gameName: string;
-  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip' | 'hilo' | 'chicken-road';
+  gameType: 'fast-parity' | 'parity' | 'mines' | 'andar-bahar' | 'jet' | 'crash' | 'spin' | 'dice' | 'pushparani' | 'coin-flip' | 'hilo' | 'chicken-road' | 'penalty-shootout';
   icon: string;
   subtitle: string;
   defaultRtp?: number;
@@ -130,6 +130,47 @@ export function GameControlCenterView({
     maxMultiplier: number;
   } | null>(null);
 
+  // Penalty Nations Cup Dedicated Admin State
+  const [penaltyStats, setPenaltyStats] = useState<{
+    totalRounds: number;
+    totalWagered: number;
+    totalPayout: number;
+    grossProfit: number;
+    activePlayers: number;
+    saveRate: number;
+    activeOverride: string;
+  }>({
+    totalRounds: 0,
+    totalWagered: 0,
+    totalPayout: 0,
+    grossProfit: 0,
+    activePlayers: 0,
+    saveRate: 0,
+    activeOverride: 'AUTO_RTP',
+  });
+
+  const [penaltyRounds, setPenaltyRounds] = useState<any[]>([]);
+  const [penaltyTotalRounds, setPenaltyTotalRounds] = useState<number>(0);
+  const [penaltyTotalPages, setPenaltyTotalPages] = useState<number>(1);
+  const [penaltyDifficulties, setPenaltyDifficulties] = useState<any[]>([
+    { slug: 'EASY', name: 'Easy', goalProbability: 0.80, maxSpots: 4, multipliers: [1.20, 1.44, 1.73, 2.07, 2.49], description: '4 target zones. High goal probability.' },
+    { slug: 'MEDIUM', name: 'Medium', goalProbability: 0.66, maxSpots: 5, multipliers: [1.80, 3.38, 6.33, 11.87, 22.25], description: '5 target zones. Balanced risk vs reward.' },
+    { slug: 'HARD', name: 'Hard', goalProbability: 0.50, maxSpots: 8, multipliers: [2.88, 8.64, 25.92, 77.76, 233.28], description: '8 target zones. High multipliers.' },
+    { slug: 'HARDCORE', name: 'Hardcore', goalProbability: 0.33, maxSpots: 8, multipliers: [3.60, 12.96, 46.66, 167.96, 604.66], description: '8 target zones. Legendary multipliers up to 604x.' },
+  ]);
+
+  const [penaltyLoading, setPenaltyLoading] = useState<boolean>(false);
+  const [penaltyPage, setPenaltyPage] = useState<number>(1);
+  const [penaltyStatusFilter, setPenaltyStatusFilter] = useState<string>('ALL');
+  const [penaltyDiffFilter, setPenaltyDiffFilter] = useState<string>('ALL');
+  const [penaltySearch, setPenaltySearch] = useState<string>('');
+  const [editingPenaltyDiff, setEditingPenaltyDiff] = useState<{
+    slug: string;
+    goalProbability: number;
+    multipliers: string;
+    maxSpots: number;
+  } | null>(null);
+
   const fetchChickenRoadData = React.useCallback(async () => {
     if (gameType !== 'chicken-road') return;
     setChickenRoadLoading(true);
@@ -206,6 +247,99 @@ export function GameControlCenterView({
         setMessage(`⚠️ Failed to update ${slug} difficulty settings`);
       }
     } catch (e) {
+      setMessage(`⚠️ Error updating ${slug} difficulty settings`);
+    }
+  };
+
+  const fetchPenaltyData = React.useCallback(async () => {
+    if (gameType !== 'penalty-shootout') return;
+    setPenaltyLoading(true);
+    try {
+      const apiBase = getApiBaseUrl();
+      const [dashRes, roundsRes, diffRes] = await Promise.all([
+        fetch(`${apiBase}/admin/penalty-shootout/dashboard`).catch(() => null),
+        fetch(`${apiBase}/admin/penalty-shootout/rounds?page=${penaltyPage}&limit=15&status=${penaltyStatusFilter}&difficulty=${penaltyDiffFilter}&search=${encodeURIComponent(penaltySearch)}`).catch(() => null),
+        fetch(`${apiBase}/admin/penalty-shootout/difficulties`).catch(() => null),
+      ]);
+
+      if (dashRes && dashRes.ok) {
+        const dJson = await dashRes.json();
+        if (dJson?.success && dJson?.data) {
+          setPenaltyStats(dJson.data);
+          setLiveStats((prev) => ({
+            ...prev,
+            todayStakes: dJson.data.totalWagered || prev.todayStakes,
+            todayPayouts: dJson.data.totalPayout || prev.todayPayouts,
+            houseNetProfit: dJson.data.grossProfit !== undefined ? dJson.data.grossProfit : prev.houseNetProfit,
+            activePlayers: dJson.data.activePlayers !== undefined ? dJson.data.activePlayers : prev.activePlayers,
+          }));
+          if (dJson.data.activeOverride && dJson.data.activeOverride !== 'AUTO_RTP') {
+            setActiveOverrideStatus(`FORCED OVERRIDE ACTIVE: ${dJson.data.activeOverride}`);
+          }
+        }
+      }
+
+      if (roundsRes && roundsRes.ok) {
+        const rJson = await roundsRes.json();
+        if (rJson?.success && rJson?.data) {
+          setPenaltyRounds(rJson.data.items || []);
+          setPenaltyTotalRounds(rJson.data.total || 0);
+          setPenaltyTotalPages(rJson.data.totalPages || 1);
+        }
+      }
+
+      if (diffRes && diffRes.ok) {
+        const diffJson = await diffRes.json();
+        if (diffJson?.success && Array.isArray(diffJson?.data) && diffJson.data.length > 0) {
+          setPenaltyDifficulties(diffJson.data);
+        }
+      }
+    } catch {
+      // offline fallback
+    } finally {
+      setPenaltyLoading(false);
+    }
+  }, [gameType, penaltyPage, penaltyStatusFilter, penaltyDiffFilter, penaltySearch]);
+
+  React.useEffect(() => {
+    if (gameType === 'penalty-shootout') {
+      fetchPenaltyData();
+      const timer = setInterval(fetchPenaltyData, 4000);
+      return () => clearInterval(timer);
+    }
+  }, [gameType, fetchPenaltyData]);
+
+  const handleSavePenaltyDifficulty = async (
+    slug: string,
+    goalProbability: number,
+    multipliersStr: string,
+    maxSpots: number,
+  ) => {
+    try {
+      const apiBase = getApiBaseUrl();
+      const parsedMultipliers = multipliersStr
+        .split(',')
+        .map((s) => parseFloat(s.trim()))
+        .filter((n) => !isNaN(n) && n > 0);
+
+      const res = await fetch(`${apiBase}/admin/penalty-shootout/difficulties`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug,
+          goalProbability: Number(goalProbability),
+          multipliers: parsedMultipliers.length > 0 ? parsedMultipliers : undefined,
+          maxSpots: Number(maxSpots),
+        }),
+      });
+      if (res.ok) {
+        setMessage(`✅ ${slug.toUpperCase()} mode updated: Goal ${(goalProbability * 100).toFixed(0)}%, Save ${((1 - goalProbability) * 100).toFixed(0)}%`);
+        setEditingPenaltyDiff(null);
+        fetchPenaltyData();
+      } else {
+        setMessage(`⚠️ Failed to update ${slug} difficulty settings`);
+      }
+    } catch {
       setMessage(`⚠️ Error updating ${slug} difficulty settings`);
     }
   };
@@ -445,22 +579,34 @@ export function GameControlCenterView({
   };
 
   const handleSetTextOverride = async (target: string) => {
-    setActiveOverrideStatus(`FORCED OVERRIDE ACTIVE: ${target}`);
+    setActiveOverrideStatus(target === 'AUTO_RTP' ? 'AUTOMATIC RTP ALGORITHM ACTIVE' : `FORCED OVERRIDE ACTIVE: ${target}`);
     try {
       const apiBase = getApiBaseUrl();
+      if (gameType === 'penalty-shootout') {
+        await fetch(`${apiBase}/admin/penalty-shootout/override`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ override: target }),
+        });
+      }
       await fetch(`${apiBase}/admin/games/${gameId}/override`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ result: target }),
       });
       setMessage(
-        gameType === 'hilo'
+        gameType === 'penalty-shootout'
+          ? `🎯 Next Penalty Goalkeeper outcome mode set to: ${target}`
+          : gameType === 'hilo'
           ? `🎯 Next HILO forced outcome set to: ${target}`
           : gameType === 'coin-flip'
           ? `🎯 Next coin flip forced outcome set to: ${target}`
           : `🎯 Next multiplier target set to: ${target}x`
       );
       fetchLiveControlData();
+      if (gameType === 'penalty-shootout') {
+        fetchPenaltyData();
+      }
     } catch (e) {
       setMessage(`🎯 Next target set to: ${target}`);
     }
@@ -840,6 +986,149 @@ export function GameControlCenterView({
         </div>
       )}
 
+      {/* PENALTY NATIONS CUP DIFFICULTY CONFIGURATION PANEL */}
+      {gameType === 'penalty-shootout' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-600 font-extrabold text-base">⚽</span>
+              <div>
+                <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+                  Penalty Nations Cup — Shootout Difficulty Controls (Easy, Medium, Hard, Hardcore)
+                </h3>
+                <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+                  Configure goal scoring probabilities, goalkeeper save defense rates, target net zones, and multipliers ladder per difficulty
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => fetchPenaltyData()}
+              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>🔄</span>
+              <span>Refresh Modes</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {['EASY', 'MEDIUM', 'HARD', 'HARDCORE'].map((slug) => {
+              const diff = penaltyDifficulties.find((d) => d.slug?.toUpperCase() === slug) || {
+                slug,
+                name: slug.charAt(0) + slug.slice(1).toLowerCase(),
+                goalProbability: slug === 'EASY' ? 0.80 : slug === 'MEDIUM' ? 0.66 : slug === 'HARD' ? 0.50 : 0.33,
+                maxSpots: slug === 'EASY' ? 4 : slug === 'MEDIUM' ? 5 : 8,
+                multipliers: slug === 'EASY' ? [1.20, 1.44, 1.73, 2.07, 2.49] : slug === 'MEDIUM' ? [1.80, 3.38, 6.33, 11.87, 22.25] : slug === 'HARD' ? [2.88, 8.64, 25.92, 77.76, 233.28] : [3.60, 12.96, 46.66, 167.96, 604.66],
+                description: '',
+              };
+
+              const badgeColor =
+                slug === 'EASY'
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                  : slug === 'MEDIUM'
+                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                  : slug === 'HARD'
+                  ? 'bg-orange-100 text-orange-800 border-orange-300'
+                  : 'bg-rose-100 text-rose-800 border-rose-300';
+
+              const isEditing = editingPenaltyDiff?.slug === slug;
+              const maxMult = Array.isArray(diff.multipliers) ? diff.multipliers[diff.multipliers.length - 1] : 0;
+
+              return (
+                <div key={slug} className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-3 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase border ${badgeColor}`}>
+                      {slug} MODE
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400">{diff.maxSpots || 5} Net Zones</span>
+                  </div>
+
+                  {isEditing ? (
+                    <div className="space-y-2 text-xs">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Goal Probability (0.1 - 0.99)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.1"
+                          max="0.99"
+                          value={editingPenaltyDiff.goalProbability}
+                          onChange={(e) => setEditingPenaltyDiff({ ...editingPenaltyDiff, goalProbability: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Target Zones Count (4 - 8)</label>
+                        <input
+                          type="number"
+                          min="4"
+                          max="8"
+                          value={editingPenaltyDiff.maxSpots}
+                          onChange={(e) => setEditingPenaltyDiff({ ...editingPenaltyDiff, maxSpots: parseInt(e.target.value, 10) || 5 })}
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block">Multipliers Ladder (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={editingPenaltyDiff.multipliers}
+                          onChange={(e) => setEditingPenaltyDiff({ ...editingPenaltyDiff, multipliers: e.target.value })}
+                          placeholder="e.g. 1.20, 1.44, 1.73, 2.07, 2.49"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-[11px]"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <button
+                          onClick={() => handleSavePenaltyDifficulty(slug, editingPenaltyDiff.goalProbability, editingPenaltyDiff.multipliers, editingPenaltyDiff.maxSpots)}
+                          className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-lg shadow-xs cursor-pointer"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingPenaltyDiff(null)}
+                          className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-extrabold text-xs rounded-lg cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Goal Chance:</span>
+                        <span className="font-black text-emerald-600">{(diff.goalProbability * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Keeper Save Chance:</span>
+                        <span className="font-black text-rose-600">{((1 - diff.goalProbability) * 100).toFixed(0)}%</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-500 font-semibold">Max Multiplier Cap:</span>
+                        <span className="font-black text-amber-600 font-mono">{maxMult ? `${maxMult}x` : 'Custom'}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono truncate">
+                        Steps: {Array.isArray(diff.multipliers) ? diff.multipliers.map((m: any) => `${m}x`).join(' → ') : ''}
+                      </div>
+                      <button
+                        onClick={() => setEditingPenaltyDiff({
+                          slug,
+                          goalProbability: diff.goalProbability,
+                          multipliers: Array.isArray(diff.multipliers) ? diff.multipliers.join(', ') : '',
+                          maxSpots: diff.maxSpots || 5,
+                        })}
+                        className="w-full py-1.5 mt-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 font-extrabold text-xs rounded-xl shadow-2xs transition-all cursor-pointer"
+                      >
+                        ⚙️ Edit Mode Config
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {gameType !== 'dice' && (
         <>
           {/* LIVE ROUND & PERIOD STATUS BAR FOR ALL GAMES */}
@@ -1049,6 +1338,36 @@ export function GameControlCenterView({
                   </span>
                 </div>
               </div>
+            ) : gameType === 'penalty-shootout' ? (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-emerald-800 uppercase block">ACTIVE STRIKERS</span>
+                  <span className="text-base font-black text-emerald-600 block mt-0.5">
+                    {(currentRoundInfo as any).activePlayers || penaltyStats?.activePlayers || (Array.isArray((currentRoundInfo as any).activeBetsList) ? (currentRoundInfo as any).activeBetsList.length : 0)} Active
+                  </span>
+                </div>
+
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-blue-800 uppercase block">TOTAL LIVE STAKED</span>
+                  <span className="text-base font-black text-blue-600 block mt-0.5">
+                    ₹{Number((currentRoundInfo as any).activeBetsSummary?.totalStaked || (currentRoundInfo as any).activeBetsList?.reduce((acc: number, b: any) => acc + Number(b.betAmount || b.amount || 0), 0) || 0).toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="bg-purple-50 border border-purple-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-purple-800 uppercase block">KEEPER SAVE RATE</span>
+                  <span className="text-base font-black text-purple-600 block mt-0.5">
+                    {penaltyStats?.saveRate ? `${penaltyStats.saveRate}%` : 'Balanced'}
+                  </span>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+                  <span className="text-[10px] font-black text-amber-800 uppercase block">GOALKEEPER RIG MODE</span>
+                  <span className="text-base font-black text-amber-600 block mt-0.5">
+                    {activeOverrideStatus.includes('SAVE') ? 'FORCE SAVE' : activeOverrideStatus.includes('GOAL') ? 'FORCE GOAL' : `AUTO RTP (${rtp}%)`}
+                  </span>
+                </div>
+              </div>
             ) : (
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
@@ -1098,6 +1417,17 @@ export function GameControlCenterView({
                           <th className="py-2.5 px-4">Cashout Multiplier</th>
                           <th className="py-2.5 px-4">Status</th>
                           <th className="py-2.5 px-4">Payout Won</th>
+                          <th className="py-2.5 px-4">Time</th>
+                        </tr>
+                      ) : gameType === 'penalty-shootout' ? (
+                        <tr>
+                          <th className="py-2.5 px-4">Striker / Player</th>
+                          <th className="py-2.5 px-4">Difficulty</th>
+                          <th className="py-2.5 px-4">Kick Step</th>
+                          <th className="py-2.5 px-4">Staked Bet</th>
+                          <th className="py-2.5 px-4">Current Multiplier</th>
+                          <th className="py-2.5 px-4">Potential Cashout</th>
+                          <th className="py-2.5 px-4">Status</th>
                           <th className="py-2.5 px-4">Time</th>
                         </tr>
                       ) : gameType === 'hilo' ? (
@@ -1152,6 +1482,32 @@ export function GameControlCenterView({
                             </td>
                             <td className="py-2.5 px-4 font-mono text-slate-500 text-[11px]">{bet.time || 'Live'}</td>
                           </tr>
+                        ) : gameType === 'penalty-shootout' ? (
+                          <tr key={bet.id || Math.random()} className="hover:bg-slate-50/80">
+                            <td className="py-2.5 px-4 font-bold text-slate-900">{bet.userEmail || bet.username || 'Striker'}</td>
+                            <td className="py-2.5 px-4">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                                (bet.difficulty || '').toLowerCase() === 'hardcore' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                                (bet.difficulty || '').toLowerCase() === 'hard' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                                (bet.difficulty || '').toLowerCase() === 'medium' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                                'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              }`}>
+                                {bet.difficulty || 'MEDIUM'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 font-black text-blue-700">
+                              ⚽ Kick #{bet.currentStep || bet.step || 1}
+                            </td>
+                            <td className="py-2.5 px-4 font-bold text-slate-800">₹{Number(bet.betAmount || bet.amount || 0).toFixed(2)}</td>
+                            <td className="py-2.5 px-4 font-black text-emerald-600">{Number(bet.multiplier || bet.currentMultiplier || 1.0).toFixed(2)}x</td>
+                            <td className="py-2.5 px-4 font-black text-emerald-600">₹{Number(bet.potentialWin || bet.potentialPayout || (bet.betAmount * (bet.multiplier || 1.0)) || 0).toFixed(2)}</td>
+                            <td className="py-2.5 px-4">
+                              <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                                {bet.status || 'IN_MATCH'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 font-mono text-slate-500 text-[11px]">{bet.time || 'Live'}</td>
+                          </tr>
                         ) : gameType === 'hilo' ? (
                           <tr key={bet.id || Math.random()} className="hover:bg-slate-50/80">
                             <td className="py-2.5 px-4 font-bold text-slate-900">{bet.userEmail || bet.username || 'Player'}</td>
@@ -1199,6 +1555,7 @@ export function GameControlCenterView({
                 <div className="bg-slate-50 border border-slate-100 rounded-2xl py-4 text-center text-xs font-semibold text-slate-400">
                   {gameType === 'mines' ? 'No active Mines game sessions currently playing. Player sessions will display here live.' :
                    gameType === 'chicken-road' ? 'No active Chicken Road player sessions currently playing. Real player bets and checkpoints will display here live.' :
+                   gameType === 'penalty-shootout' ? 'No active Penalty Shootout striker sessions currently playing. Real player kicks and match sessions will display here live.' :
                    (gameType === 'crash' || gameType === 'jet' || gameType === 'pushparani') ? `No live bets placed yet for current round ${currentRoundInfo.periodNumber || '#CRASH_FLIGHT'}. Real bets placed by players will display here live.` :
                    `No live bets placed yet for current round ${currentRoundInfo.periodNumber}. Real bets placed by players will display here live.`}
                 </div>
@@ -1207,6 +1564,7 @@ export function GameControlCenterView({
           </div>
 
           {/* NEXT ROUND RESULT LIVE PREVIEW & TELEMETRY CARD */}
+          {gameType !== 'penalty-shootout' && (
           <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-3xl p-5 shadow-xl text-white space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-800/50 pb-3">
               <div className="flex items-center gap-2.5">
@@ -1432,6 +1790,7 @@ export function GameControlCenterView({
               </div>
             </div>
           </div>
+          )}
         </>
       )}
 
@@ -2326,6 +2685,73 @@ export function GameControlCenterView({
         </div>
       )}
 
+      {/* PENALTY SHOOTOUT OUTCOME MODE CONTROLS */}
+      {gameType === 'penalty-shootout' && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+            <span className="text-slate-400">🧤</span>
+            <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wide">
+              GOALKEEPER DEFENSE & OUTCOME MODE CONTROLS
+            </h3>
+          </div>
+
+          <div className="space-y-3">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+              REAL-TIME GOALKEEPER RIG / RTP OVERRIDE
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <button
+                onClick={() => handleSetTextOverride('AUTO_RTP')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  !activeOverrideStatus.includes('SAVE') && !activeOverrideStatus.includes('GOAL')
+                    ? 'bg-emerald-50 border-emerald-300 text-emerald-900 ring-2 ring-emerald-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">🤖</span>
+                  <span className="text-[9px] font-black bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-full uppercase">DEFAULT</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">AUTOMATIC RTP ENGINE</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Standard RTP ({rtp}%) with balanced goalkeeper defense and difficulty-based save rates</div>
+              </button>
+
+              <button
+                onClick={() => handleSetTextOverride('FORCE_SAVE')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  activeOverrideStatus.includes('SAVE') || activeOverrideStatus.includes('LOSS')
+                    ? 'bg-rose-50 border-rose-300 text-rose-900 ring-2 ring-rose-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">🧤</span>
+                  <span className="text-[9px] font-black bg-rose-200 text-rose-900 px-2 py-0.5 rounded-full uppercase">PROTECT HOUSE</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">FORCE KEEPER SAVE (HOUSE WIN)</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Forces goalkeeper to block and dive-save incoming striker penalty shots to protect house profit</div>
+              </button>
+
+              <button
+                onClick={() => handleSetTextOverride('FORCE_GOAL')}
+                className={`p-4 rounded-2xl font-black text-left shadow-xs transition-all cursor-pointer border ${
+                  activeOverrideStatus.includes('GOAL') || activeOverrideStatus.includes('WIN')
+                    ? 'bg-amber-50 border-amber-300 text-amber-900 ring-2 ring-amber-500/20'
+                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xl">⚽</span>
+                  <span className="text-[9px] font-black bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full uppercase">HIGH ENGAGEMENT</span>
+                </div>
+                <div className="mt-2 text-xs font-black uppercase">FORCE GOAL / STRIKE BOOST</div>
+                <div className="text-[10px] font-semibold opacity-80 mt-0.5">Guarantees successful goals into target spots to boost player excitement and retention</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* RECENT SETTLED HISTORY TABLES */}
       <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-xs space-y-4">
         <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
@@ -2831,6 +3257,156 @@ export function GameControlCenterView({
                 })}
               </tbody>
             </table>
+          )}
+
+          {gameType === 'penalty-shootout' && (
+            <div className="space-y-4">
+              {/* FILTERS & SEARCH */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-slate-400 text-xs font-bold">🔍</span>
+                  <input
+                    type="text"
+                    value={penaltySearch}
+                    onChange={(e) => {
+                      setPenaltySearch(e.target.value);
+                      setPenaltyPage(1);
+                    }}
+                    placeholder="Search striker email, username, or round ID..."
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 w-full sm:w-72"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <select
+                    value={penaltyDiffFilter}
+                    onChange={(e) => {
+                      setPenaltyDiffFilter(e.target.value);
+                      setPenaltyPage(1);
+                    }}
+                    className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none"
+                  >
+                    <option value="ALL">All Difficulties</option>
+                    <option value="EASY">Easy</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HARD">Hard</option>
+                    <option value="HARDCORE">Hardcore</option>
+                  </select>
+
+                  <select
+                    value={penaltyStatusFilter}
+                    onChange={(e) => {
+                      setPenaltyStatusFilter(e.target.value);
+                      setPenaltyPage(1);
+                    }}
+                    className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none"
+                  >
+                    <option value="ALL">All Statuses</option>
+                    <option value="PLAYING">In Match</option>
+                    <option value="CASHED_OUT">Goal Cashout</option>
+                    <option value="LOST">Keeper Saved</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* TABLE */}
+              <table className="w-full text-left text-xs font-medium text-slate-700">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[10px] font-black">
+                  <tr>
+                    <th className="py-2.5 px-4">Match Round ID</th>
+                    <th className="py-2.5 px-4">Striker Player</th>
+                    <th className="py-2.5 px-4">Difficulty</th>
+                    <th className="py-2.5 px-4">Kicks / Step</th>
+                    <th className="py-2.5 px-4">Wager</th>
+                    <th className="py-2.5 px-4">Final Multiplier</th>
+                    <th className="py-2.5 px-4">Payout Won</th>
+                    <th className="py-2.5 px-4">Status</th>
+                    <th className="py-2.5 px-4">Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {penaltyRounds.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-slate-400 font-semibold">
+                        No penalty shootout rounds found matching your filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    penaltyRounds.map((r: any) => {
+                      const isWon = r.status === 'CASHED_OUT' || r.status === 'WON';
+                      const isLost = r.status === 'LOST';
+                      return (
+                        <tr key={r.id} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-4 font-mono font-bold text-blue-600 text-[11px]">
+                            {r.id ? r.id.substring(0, 10) : '#PENALTY'}...
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">
+                            {r.user?.email || r.user?.username || r.userEmail || 'Striker'}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase ${
+                              (r.difficulty || '').toLowerCase() === 'hardcore' ? 'bg-purple-100 text-purple-800 border border-purple-200' :
+                              (r.difficulty || '').toLowerCase() === 'hard' ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                              (r.difficulty || '').toLowerCase() === 'medium' ? 'bg-amber-100 text-amber-800 border border-amber-200' :
+                              'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            }`}>
+                              {r.difficulty || 'MEDIUM'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-slate-700">
+                            ⚽ Step {r.currentStep || r.step || 0} / {r.maxSpots || 5}
+                          </td>
+                          <td className="py-2.5 px-4 font-bold text-slate-900">
+                            ₹{Number(r.betAmount || r.stake || 0).toFixed(2)}
+                          </td>
+                          <td className="py-2.5 px-4 font-black text-indigo-600">
+                            {Number(r.multiplier || 1.0).toFixed(2)}x
+                          </td>
+                          <td className="py-2.5 px-4 font-black text-emerald-600">
+                            {isWon ? `₹${Number(r.payout || r.winAmount || 0).toFixed(2)}` : '₹0.00'}
+                          </td>
+                          <td className="py-2.5 px-4">
+                            <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${
+                              isWon ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' :
+                              isLost ? 'bg-rose-100 text-rose-800 border border-rose-200' :
+                              'bg-blue-100 text-blue-800 border border-blue-200'
+                            }`}>
+                              {isWon ? '🎯 GOAL CASHOUT' : isLost ? '🧤 KEEPER SAVED' : '⚽ IN MATCH'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-4 text-slate-400 font-mono text-[11px]">
+                            {r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : 'Just now'}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+
+              {/* PAGINATION FOOTER */}
+              {penaltyTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs font-bold text-slate-600">
+                  <span>Page {penaltyPage} of {penaltyTotalPages} ({penaltyTotalRounds} Total Rounds)</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={penaltyPage <= 1}
+                      onClick={() => setPenaltyPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded-lg cursor-pointer"
+                    >
+                      ← Prev
+                    </button>
+                    <button
+                      disabled={penaltyPage >= penaltyTotalPages}
+                      onClick={() => setPenaltyPage((p) => Math.min(penaltyTotalPages, p + 1))}
+                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 rounded-lg cursor-pointer"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>

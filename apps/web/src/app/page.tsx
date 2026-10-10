@@ -26,6 +26,7 @@ const GAMES_FALLBACK = [
   { id: 'coin-flip', name: 'Coin Flip', slug: 'coin-flip', minBet: 10, description: 'Flip coin - heads or tails. Win 1.96x!', badge: '1.96X' },
   { id: 'hilo', name: 'HILO', slug: 'hilo', minBet: 10, description: 'Card prediction: Higher or Lower? Win 2.0x!', badge: 'NEW' },
   { id: 'chicken-road', name: 'Chicken Road', slug: 'chicken-road', minBet: 10, description: 'Cross multi-lane traffic checkpoints! Win up to 10,000x multipliers!', badge: 'HOT' },
+  { id: 'penalty-shootout', name: 'Penalty Nations Cup', slug: 'penalty-shootout', minBet: 10, description: 'Score penalty shootout goals past the goalkeeper! Win up to 604x multipliers!', badge: 'HOT' },
 ];
 
 export default function HomePage() {
@@ -89,12 +90,24 @@ export default function HomePage() {
   }, []);
 
   return (
-    <div className="flex flex-col min-h-screen pt-[84px]">
+    <div className="flex flex-col min-h-screen pt-[84px] relative overflow-x-hidden bg-[#040816]">
+      {/* ── AMBIENT NEON GLOW LIGHTING MESH ── */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        {/* Top-left Cyan/Blue Glow */}
+        <div className="absolute -top-24 left-1/4 -translate-x-1/2 w-[350px] sm:w-[600px] h-[350px] sm:h-[600px] bg-gradient-to-br from-[#00D9FF]/20 via-[#287BFF]/14 to-transparent rounded-full blur-[100px] sm:blur-[140px] animate-pulse" style={{ animationDuration: '6s' }} />
+        {/* Mid-right Electric Violet/Pink Glow */}
+        <div className="absolute top-[32%] -right-20 w-[300px] sm:w-[500px] h-[300px] sm:h-[500px] bg-gradient-to-bl from-[#FF3FA4]/16 via-[#873BFF]/18 to-transparent rounded-full blur-[110px] sm:blur-[150px]" />
+        {/* Lower-left Emerald / Sports Green Glow */}
+        <div className="absolute top-[65%] -left-20 w-[320px] sm:w-[550px] h-[320px] sm:h-[550px] bg-gradient-to-tr from-[#00E5A0]/16 via-[#10B981]/12 to-transparent rounded-full blur-[110px] sm:blur-[140px]" />
+        {/* Bottom Gold / Amber Ambient Accent */}
+        <div className="absolute -bottom-20 right-1/4 w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] bg-gradient-to-t from-[#FFC928]/12 via-[#FF9F1C]/8 to-transparent rounded-full blur-[120px]" />
+      </div>
+
       {/* Fixed Top Header */}
       <TopHeader balance={balance} onSearch={handleSearch} />
 
       {/* Body: Sidebar + Main Content */}
-      <div className="flex flex-1 w-full lg:pl-[220px] xl:pl-60">
+      <div className="flex flex-1 w-full lg:pl-[220px] xl:pl-60 relative z-10">
         {/* Desktop Left Sidebar (only lg+) */}
         <DesktopSidebar />
 

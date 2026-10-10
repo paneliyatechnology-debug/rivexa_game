@@ -16,6 +16,7 @@ import { PushparaniModule } from './games/pushparani/pushparani.module.js';
 import { CoinFlipModule } from './games/coin-flip/coin-flip.module.js';
 import { HiloModule } from './games/hilo/hilo.module.js';
 import { ChickenRoadModule } from './games/chicken-road/chicken-road.module.js';
+import { PenaltyShootoutModule } from './games/penalty-shootout/penalty-shootout.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { TasksModule } from './tasks/tasks.module.js';
@@ -45,6 +46,7 @@ import { GameSessionsModule } from './game-sessions/game-sessions.module.js';
     CoinFlipModule,
     HiloModule,
     ChickenRoadModule,
+    PenaltyShootoutModule,
     AdminModule,
     NotificationsModule,
     TasksModule,

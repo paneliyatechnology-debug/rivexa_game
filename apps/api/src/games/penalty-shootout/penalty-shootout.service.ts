@@ -5,6 +5,7 @@ import { PenaltyShootDto } from './dto/shoot.dto.js';
 import { PenaltyCashoutDto } from './dto/cashout.dto.js';
 import * as crypto from 'crypto';
 import { Prisma } from '@gaming-platform/database';
+import { toValidUserId, DEFAULT_DEMO_UUID } from '../../common/utils/user-id.util.js';
 
 export interface PenaltyDifficultyConfig {
   slug: string;
@@ -124,6 +125,51 @@ export class PenaltyShootoutService {
     return this.dynamicDifficulties[key];
   }
 
+  private toValidUserId(userId?: string | null): string {
+    return toValidUserId(userId);
+  }
+
+  private async getOrCreateWallet(tx: any, userId: string | null) {
+    const activeUserId = this.toValidUserId(userId);
+    let wallet = await tx.wallet.findFirst({
+      where: { userId: activeUserId },
+    });
+
+    if (!wallet) {
+      try {
+        await tx.user.upsert({
+          where: { id: activeUserId },
+          update: {},
+          create: {
+            id: activeUserId,
+            email: activeUserId === DEFAULT_DEMO_UUID ? 'demo@rivexa.com' : `user_${activeUserId.slice(0, 8)}@rivexa.com`,
+            passwordHash: 'demo',
+            referralCode: activeUserId === DEFAULT_DEMO_UUID ? 'DEMO_PENALTY' : `REF_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+          },
+        });
+        wallet = await tx.wallet.create({
+          data: {
+            userId: activeUserId,
+            mainBalance: 10000.0,
+            bonusBalance: 0.0,
+            currency: 'INR',
+          },
+        });
+      } catch (e) {
+        wallet = await tx.wallet.findFirst({ where: { userId: activeUserId } });
+      }
+    }
+
+    if (activeUserId === DEFAULT_DEMO_UUID && wallet && Number(wallet.mainBalance) < 10) {
+      wallet = await tx.wallet.update({
+        where: { id: wallet.id },
+        data: { mainBalance: 10000.0 },
+      });
+    }
+
+    return { activeUserId, wallet };
+  }
+
   // ── Cryptographic Helpers ──────────────────────────────────────────────────
 
   private generateSeed(): string {
@@ -182,9 +228,10 @@ export class PenaltyShootoutService {
   // ── Round Management ──────────────────────────────────────────────────────
 
   async getActiveRound(userId: string) {
+    const activeUserId = this.toValidUserId(userId);
     const activeRound = await this.prisma.penaltyShootoutRound.findFirst({
       where: {
-        userId,
+        userId: activeUserId,
         status: 'ACTIVE',
       },
       include: {
@@ -217,6 +264,8 @@ export class PenaltyShootoutService {
       clientSeed: customClientSeed,
     } = dto;
 
+    const activeUserId = this.toValidUserId(userId);
+
     const diffConfig =
       this.dynamicDifficulties[difficulty.toUpperCase()] ||
       PENALTY_DIFFICULTIES[difficulty.toUpperCase()] ||
@@ -224,7 +273,7 @@ export class PenaltyShootoutService {
 
     // 1. Check existing active round
     const existingActive = await this.prisma.penaltyShootoutRound.findFirst({
-      where: { userId, status: 'ACTIVE' },
+      where: { userId: activeUserId, status: 'ACTIVE' },
     });
 
     if (existingActive) {
@@ -234,7 +283,7 @@ export class PenaltyShootoutService {
     }
 
     // 2. Fetch user wallet & verify balance
-    const wallet = await this.prisma.wallet.findUnique({ where: { userId } });
+    const { wallet } = await this.getOrCreateWallet(this.prisma, activeUserId);
 
     if (!wallet) {
       throw new BadRequestException('User wallet not found');
@@ -258,7 +307,7 @@ export class PenaltyShootoutService {
     const [round] = await this.prisma.$transaction([
       this.prisma.penaltyShootoutRound.create({
         data: {
-          userId,
+          userId: activeUserId,
           difficulty: diffConfig.slug,
           betAmount: new Prisma.Decimal(betAmount),
           currentStep: 0,
@@ -277,7 +326,7 @@ export class PenaltyShootoutService {
         include: { shots: true },
       }),
       this.prisma.wallet.update({
-        where: { userId },
+        where: { userId: activeUserId },
         data: { mainBalance: new Prisma.Decimal(newBalance) },
       }),
       this.prisma.walletTransaction.create({
@@ -314,6 +363,7 @@ export class PenaltyShootoutService {
 
   async shoot(dto: PenaltyShootDto) {
     const { userId, gameRoundId, targetSpot } = dto;
+    const activeUserId = this.toValidUserId(userId);
 
     // 1. Fetch round
     const round = await this.prisma.penaltyShootoutRound.findUnique({
@@ -325,7 +375,7 @@ export class PenaltyShootoutService {
       throw new NotFoundException('Penalty Shootout round not found');
     }
 
-    if (round.userId !== userId) {
+    if (round.userId !== activeUserId) {
       throw new BadRequestException('Unauthorized access to this game round');
     }
 
@@ -438,7 +488,7 @@ export class PenaltyShootoutService {
         await tx.penaltyResult.create({
           data: {
             gameRoundId: round.id,
-            userId,
+            userId: activeUserId,
             betAmount: round.betAmount,
             finalStep: isGoal ? shotNumber : round.currentStep,
             finalMultiplier: new Prisma.Decimal(shotMultiplier),
@@ -450,14 +500,14 @@ export class PenaltyShootoutService {
       }
 
       if (autoWin && potentialPayout > 0) {
-        const wallet = await tx.wallet.findUnique({ where: { userId } });
+        const wallet = await tx.wallet.findUnique({ where: { userId: activeUserId } });
         if (wallet) {
           const oldBal = Number(wallet.mainBalance);
           const newBal = oldBal + potentialPayout;
           finalNewBalance = newBal;
 
           await tx.wallet.update({
-            where: { userId },
+            where: { userId: activeUserId },
             data: {
               mainBalance: new Prisma.Decimal(newBal),
               totalWinnings: { increment: new Prisma.Decimal(potentialPayout) },
@@ -504,6 +554,7 @@ export class PenaltyShootoutService {
 
   async cashout(dto: PenaltyCashoutDto) {
     const { userId, gameRoundId } = dto;
+    const activeUserId = this.toValidUserId(userId);
 
     const round = await this.prisma.penaltyShootoutRound.findUnique({
       where: { id: gameRoundId },
@@ -513,7 +564,7 @@ export class PenaltyShootoutService {
       throw new NotFoundException('Penalty Shootout round not found');
     }
 
-    if (round.userId !== userId) {
+    if (round.userId !== activeUserId) {
       throw new BadRequestException('Unauthorized access to this game round');
     }
 
@@ -556,7 +607,7 @@ export class PenaltyShootoutService {
       await tx.penaltyResult.create({
         data: {
           gameRoundId: round.id,
-          userId,
+          userId: activeUserId,
           betAmount: round.betAmount,
           finalStep: round.currentStep,
           finalMultiplier: round.currentMultiplier,
@@ -566,13 +617,13 @@ export class PenaltyShootoutService {
         },
       });
 
-      const wallet = await tx.wallet.findUnique({ where: { userId } });
+      const wallet = await tx.wallet.findUnique({ where: { userId: activeUserId } });
       if (wallet) {
         const oldBal = Number(wallet.mainBalance);
         newBalance = oldBal + payout;
 
         await tx.wallet.update({
-          where: { userId },
+          where: { userId: activeUserId },
           data: {
             mainBalance: new Prisma.Decimal(newBalance),
             totalWinnings: { increment: new Prisma.Decimal(payout) },
@@ -608,13 +659,14 @@ export class PenaltyShootoutService {
   // ── Provably Fair Verification ─────────────────────────────────────────────
 
   async verifyFairness(roundId: string, userId: string) {
+    const activeUserId = this.toValidUserId(userId);
     const round = await this.prisma.penaltyShootoutRound.findUnique({
       where: { id: roundId },
       include: { shots: { orderBy: { shotNumber: 'asc' } } },
     });
 
     if (!round) throw new NotFoundException('Round not found');
-    if (round.userId !== userId)
+    if (round.userId !== activeUserId)
       throw new BadRequestException('Unauthorized access to round');
 
     // Server seed only verifiable after round ends
@@ -694,8 +746,9 @@ export class PenaltyShootoutService {
   // ── History & Statistics ───────────────────────────────────────────────────
 
   async getHistory(userId: string, limit = 20) {
+    const activeUserId = this.toValidUserId(userId);
     const rounds = await this.prisma.penaltyShootoutRound.findMany({
-      where: { userId },
+      where: { userId: activeUserId },
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {

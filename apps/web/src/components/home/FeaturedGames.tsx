@@ -25,6 +25,7 @@ const GAME_META: Record<
     badgeStyle: string;
     ctaStyle: string;
     glowHex: string;
+    customImage?: string;
   }
 > = {
   'fast-parity': {
@@ -310,7 +311,7 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
       )
     : categoryGames;
 
-  const showSportsShowcase = (activeCategory === 'ALL' || activeCategory === 'SPORTS') && !searchQuery;
+  const showSportsShowcase = activeCategory === 'SPORTS' && !searchQuery;
 
   return (
     <div id="games" className="space-y-4">
@@ -376,7 +377,7 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
         })}
       </div>
 
-      {/* ── Live Sports & Cricket Betting Showcase (When ALL or SPORTS is active) ── */}
+      {/* ── Live Sports & Cricket Betting Showcase (Only When SPORTS category is active) ── */}
       {showSportsShowcase && (
         <div className="space-y-3 pt-1">
           <div className="flex items-center justify-between">
@@ -384,7 +385,7 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
               <span className="text-base drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">⚽</span>
               <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-cyan-200 to-emerald-300">
-                  Live Sports &amp; Penalty Arena
+                  Live Cricket &amp; Sportsbook Arena
                 </span>
                 <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-[0_0_12px_rgba(16,185,129,0.35)] animate-pulse">
                   LIVE ODDS
@@ -477,65 +478,29 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
                   </Link>
                 );
               })()
-            ) : (
-              /* Fallback Live Sports Card */
-              <Link
-                href="/sports"
-                className="relative rounded-2xl p-4 bg-gradient-to-br from-[#0B1E48]/95 via-[#081735]/95 to-[#040B1D]/95 border-2 border-cyan-500/40 hover:border-cyan-300 shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all block group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/60 before:to-transparent"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-                    CRICAPI SPORTSBOOK
-                  </span>
-                  <span className="text-xs text-cyan-300 font-bold">22+ Live Matches</span>
-                </div>
-                <h4 className="text-sm font-black text-white mb-1 group-hover:text-cyan-300 transition-colors">
-                  Live Cricket, Football &amp; Virtual Leagues
-                </h4>
-                <p className="text-xs text-slate-300 mb-3">
-                  Place live bets on real-time cricket matches with instant odds updates.
-                </p>
-                <div className="inline-flex items-center gap-1 text-xs font-black text-cyan-400 group-hover:translate-x-1 transition-transform">
-                  Open Sportsbook <ArrowRight className="w-3.5 h-3.5" />
-                </div>
-              </Link>
-            )}
+            ) : null}
 
-            {/* Card 2: Penalty Nations Cup Flagship Banner with Emerald Stadium Glow */}
-            <a
-              href="/play/penalty-shootout"
-              onClick={(e) => handleGameCardClick(e, 'penalty-shootout')}
-              className="relative group rounded-2xl p-4 bg-gradient-to-br from-[#062A1D]/95 via-[#093A27]/95 to-[#03150D]/95 border-2 border-emerald-400/60 hover:border-emerald-300 shadow-[0_0_35px_rgba(16,185,129,0.3)] hover:shadow-[0_0_45px_rgba(16,185,129,0.5)] transition-all cursor-pointer overflow-hidden block before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-emerald-400/70 before:to-transparent"
+            {/* CricAPI Sportsbook Card */}
+            <Link
+              href="/sports"
+              className="relative rounded-2xl p-4 bg-gradient-to-br from-[#0B1E48]/95 via-[#081735]/95 to-[#040B1D]/95 border-2 border-cyan-500/40 hover:border-cyan-300 shadow-[0_0_25px_rgba(6,182,212,0.2)] transition-all block group overflow-hidden before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-cyan-400/60 before:to-transparent"
             >
-              {/* Internal Floodlight Flare */}
-              <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/25 rounded-full blur-2xl pointer-events-none" />
-
-              <div className="flex items-center justify-between mb-2 relative z-10">
-                <span className="text-[9px] font-black px-2.5 py-0.5 rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 text-slate-950 shadow-[0_0_12px_rgba(16,185,129,0.4)]">
-                  FLAGSHIP SPORTS
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                  CRICAPI SPORTSBOOK
                 </span>
-                <span className="text-xs font-black text-emerald-300 drop-shadow-[0_0_6px_rgba(74,222,128,0.5)]">Up to 604x Multipliers</span>
+                <span className="text-xs text-cyan-300 font-bold">22+ Live Matches</span>
               </div>
-              <div className="flex items-center gap-3 relative z-10">
-                <div className="w-12 h-12 rounded-xl bg-emerald-500/25 border border-emerald-300/60 flex items-center justify-center text-2xl shrink-0 group-hover:scale-110 transition-transform shadow-[0_0_20px_rgba(74,222,128,0.45)]">
-                  ⚽
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-white group-hover:text-emerald-300 transition-colors drop-shadow-sm">
-                    Penalty Nations Cup
-                  </h4>
-                  <p className="text-xs text-emerald-200/80 leading-snug">
-                    Score penalty shootout goals past the goalkeeper in Brazil vs Argentina showdown!
-                  </p>
-                </div>
+              <h4 className="text-sm font-black text-white mb-1 group-hover:text-cyan-300 transition-colors">
+                Live Cricket, Football &amp; Virtual Leagues
+              </h4>
+              <p className="text-xs text-slate-300 mb-3">
+                Place live bets on real-time cricket matches with instant odds updates.
+              </p>
+              <div className="inline-flex items-center gap-1 text-xs font-black text-cyan-400 group-hover:translate-x-1 transition-transform">
+                Open Sportsbook <ArrowRight className="w-3.5 h-3.5" />
               </div>
-              <div className="mt-3 flex items-center justify-between pt-2 border-t border-emerald-500/30 relative z-10">
-                <span className="text-[10px] font-extrabold text-emerald-300">Min Bet ₹10</span>
-                <span className="text-xs font-black px-3.5 py-1.5 rounded-full bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 text-slate-950 flex items-center gap-1 group-hover:brightness-110 shadow-[0_0_16px_rgba(16,185,129,0.5)] active:scale-95 transition-all">
-                  Play Shootout <Play className="w-2.5 h-2.5 fill-slate-950" />
-                </span>
-              </div>
-            </a>
+            </Link>
           </div>
         </div>
       )}
@@ -576,8 +541,9 @@ export function FeaturedGames({ games, searchQuery = '' }: FeaturedGamesProps) {
               const desc = GAME_DESC[game.slug] ?? game.description?.split('...')[0] ?? 'Classic Game';
               const isLaunching = launchingSlug === game.slug;
 
-              // Resolve the individual SVG card from the Figma kit
+              // Resolve the individual SVG card from the Figma kit or custom image
               const svgSrc =
+                meta.customImage ??
                 GAMEHUB_ASSETS.gameCards.cards[meta.svgKey as CardKey] ??
                 GAMEHUB_ASSETS.gameCards.cards['more-games'];
 

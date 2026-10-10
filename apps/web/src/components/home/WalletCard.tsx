@@ -33,13 +33,13 @@ export function WalletCard({ balance }: WalletCardProps) {
   }, [balance, prevBalance]);
 
   return (
-    <div className="relative rounded-[20px] overflow-hidden bg-gradient-to-br from-[#101C3A] via-[#142650] to-[#0C1030] border border-white/10 shadow-2xl">
+    <div className="relative rounded-[20px] overflow-hidden bg-gradient-to-br from-[#101C3A] via-[#142650] to-[#0C1030] border border-[#00E5A0]/25 shadow-[0_0_28px_rgba(0,229,160,0.15)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-emerald-400/50 before:to-transparent before:z-20">
       {/* Ambient glows */}
-      <div className="absolute -bottom-8 -left-8 w-40 h-40 bg-[#287BFF]/15 rounded-full blur-2xl pointer-events-none" />
-      <div className="absolute -top-8 -right-8 w-40 h-40 bg-[#00D9FF]/10 rounded-full blur-2xl pointer-events-none" />
+      <div className="absolute -bottom-8 -left-8 w-44 h-44 bg-[#00E5A0]/20 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -top-8 -right-8 w-44 h-44 bg-[#00D9FF]/20 rounded-full blur-3xl pointer-events-none" />
 
       {/* Decorative animated ring */}
-      <div className="absolute top-4 right-4 opacity-10 pointer-events-none">
+      <div className="absolute top-4 right-4 opacity-20 pointer-events-none">
         <svg viewBox="0 0 80 80" className="w-20 h-20 animate-slow-spin">
           <circle cx="40" cy="40" r="38" stroke="#287BFF" strokeWidth="2" fill="none" strokeDasharray="6 3" />
           <circle cx="40" cy="40" r="28" stroke="#00E5A0" strokeWidth="1.5" fill="none" />
@@ -78,7 +78,9 @@ export function WalletCard({ balance }: WalletCardProps) {
           {visible ? (
             <span
               style={{
-                textShadow: changed ? '0 0 20px rgba(0,229,160,0.5)' : '0 0 10px rgba(0,217,255,0.2)',
+                textShadow: changed
+                  ? '0 0 24px rgba(0,229,160,0.8), 0 0 10px rgba(0,229,160,0.5)'
+                  : '0 0 18px rgba(0,217,255,0.35), 0 0 32px rgba(0,217,255,0.18)',
               }}
             >
               ₹{balance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}

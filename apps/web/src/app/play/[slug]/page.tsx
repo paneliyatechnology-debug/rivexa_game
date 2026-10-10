@@ -15,6 +15,7 @@ import { DiceGame } from '@/components/DiceGame';
 import { MinesGame } from '@/components/MinesGame';
 import HiloGame from '@/components/HiloGame';
 import ChickenRoadGame from '@/components/game/chicken-road/ChickenRoadGame';
+import PenaltyShootoutGame from '@/components/game/penalty-shootout/PenaltyShootoutGame';
 import { getApiBaseUrl } from '@/lib/config';
 import ValidationErrorModal, { ValidationErrorType } from '@/components/ValidationErrorModal';
 import { useAuth } from '@/context/AuthContext';
@@ -117,6 +118,10 @@ export default function PlayGamePage() {
 
   if (slug === 'chicken-road' || slug === 'chickenroad') {
     return <ChickenRoadGame />;
+  }
+
+  if (slug === 'penalty' || slug === 'penalty-shootout' || slug === 'penalty-nations-cup') {
+    return <PenaltyShootoutGame />;
   }
 
   const [userState, setUserState] = useState<{ id: string; email: string } | null>(null);

@@ -966,6 +966,20 @@ export class AdminService {
       rtpPercentage: 96,
       isActive: true,
     },
+    {
+      id: 'penalty-shootout',
+      name: 'Penalty Nations Cup',
+      slug: 'penalty-shootout',
+      minBet: 10,
+      maxBet: 100000,
+      description: 'Score penalty shootout goals past the goalkeeper! Multipliers up to 604x!',
+      badge: 'HOT',
+      badgeClass: 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-black',
+      icon: 'bi-dribbble',
+      iconColor: 'text-emerald-400',
+      rtpPercentage: 97,
+      isActive: true,
+    },
   ];
 
   async getGameSettings() {
@@ -1568,9 +1582,9 @@ export class AdminService {
       openCard = deck[(openH >>> 0) % deck.length];
 
       roundStatus = elapsed < 45 ? `BETTING OPEN (${countdown}s)` : `DEALING CARDS...`;
-    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad') {
+    } else if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani' || cleanId === 'chicken-road' || cleanId === 'chickenroad' || cleanId === 'penalty-shootout' || cleanId === 'penalty') {
       try {
-        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : cleanId.includes('chicken') ? this.db.chickenRoadRound : this.db.crashRound;
+        const roundModel = cleanId === 'jet' ? this.db.jetRound : cleanId === 'pushparani' ? this.db.pushparaniRound : cleanId.includes('chicken') ? this.db.chickenRoadRound : cleanId.includes('penalty') ? this.db.penaltyShootoutRound : this.db.crashRound;
         const activeCrash = await roundModel.findFirst({
           orderBy: { createdAt: 'desc' },
         });
@@ -2646,6 +2660,129 @@ export class AdminService {
       };
     }
 
+    if (cleanId === 'penalty-shootout' || cleanId === 'penalty') {
+      let penaltyTotalStakes = 0;
+      let penaltyTotalPayouts = 0;
+      let activePlayersCount = 0;
+      try {
+        const stakesRes = await this.db.penaltyShootoutRound.aggregate({ _sum: { betAmount: true } }).catch(() => ({ _sum: { betAmount: 0 } }));
+        penaltyTotalStakes = Number(stakesRes?._sum?.betAmount || 0);
+
+        const payoutsRes = await this.db.penaltyResult.aggregate({ _sum: { grossPayout: true } }).catch(() => ({ _sum: { grossPayout: 0 } }));
+        penaltyTotalPayouts = Number(payoutsRes?._sum?.grossPayout || 0);
+        if (penaltyTotalPayouts === 0) {
+          const cashedOutRounds = await this.db.penaltyShootoutRound.findMany({
+            where: { OR: [{ status: 'CASHED_OUT' }, { status: 'COMPLETED' }, { result: 'CASHOUT' }, { result: 'WIN' }] },
+            select: { betAmount: true, currentMultiplier: true, potentialPayout: true },
+          }).catch(() => []);
+          penaltyTotalPayouts = cashedOutRounds.reduce((acc: number, r: any) => {
+            const mult = Number(r.currentMultiplier || 1.0);
+            const bet = Number(r.betAmount || 0);
+            const p = Number(r.potentialPayout || (bet * mult));
+            return acc + (p > 0 ? p : bet * mult);
+          }, 0);
+        }
+
+        activePlayersCount = await this.db.penaltyShootoutRound.count({
+          where: { status: 'ACTIVE' },
+        }).catch(() => 0);
+
+        const activeRounds = await this.db.penaltyShootoutRound.findMany({
+          where: { status: 'ACTIVE' },
+          include: { user: { select: { email: true, phone: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 15,
+        }).catch(() => []);
+
+        if (activeRounds && activeRounds.length > 0) {
+          activeBetsList = activeRounds.map((r: any) => {
+            const amt = Number(r.betAmount || 0);
+            const mult = Number(r.currentMultiplier || 1.0);
+            const pot = Number(r.potentialPayout || (amt * mult));
+            return {
+              id: r.id,
+              userEmail: r.user?.email || r.user?.phone || 'Rivexa Player',
+              betAmount: amt,
+              amount: amt,
+              difficulty: (r.difficulty || 'MEDIUM').toUpperCase(),
+              step: r.currentStep || 0,
+              multiplier: mult,
+              potentialWin: pot,
+              status: r.status,
+              time: new Date(r.createdAt).toTimeString().split(' ')[0],
+            };
+          });
+        }
+
+        const recentDbRounds = await this.db.penaltyShootoutRound.findMany({
+          where: { status: { in: ['CASHED_OUT', 'SAVED', 'COMPLETED'] } },
+          include: { user: { select: { email: true, phone: true } } },
+          orderBy: { updatedAt: 'desc' },
+          take: 20,
+        }).catch(() => []);
+
+        if (recentDbRounds && recentDbRounds.length > 0) {
+          settledPeriods = recentDbRounds.map((r: any) => {
+            const rTime = new Date(r.updatedAt || r.createdAt);
+            const timeStr = rTime.toTimeString().split(' ')[0] + `, ${rTime.toLocaleString('en-US', { month: 'short' })} ${rTime.getDate()}`;
+            const bet = Number(r.betAmount || 0);
+            const mult = Number(r.currentMultiplier || 1.0);
+            const winAmt = r.status === 'CASHED_OUT' || r.status === 'COMPLETED' ? Number(r.potentialPayout || (bet * mult)) : 0;
+            return {
+              id: r.id,
+              period: `#${r.id.slice(0, 8).toUpperCase()}`,
+              winningNumber: `${mult.toFixed(2)}x`,
+              multiplier: mult,
+              payout: winAmt,
+              status: r.status === 'CASHED_OUT' ? 'CLAIMED' : r.status === 'COMPLETED' ? '5/5 WIN' : 'SAVED',
+              time: timeStr,
+            };
+          });
+        }
+      } catch (e) {}
+
+      const houseNetProfit = penaltyTotalStakes - penaltyTotalPayouts;
+
+      const activePenaltyOverride = this.overrideService.getOverride('penalty-shootout') || this.overrideService.getOverride('penalty');
+
+      return {
+        gameId: cleanId,
+        gameName: game.name,
+        rtpPercentage: Number(game.rtpPercentage),
+        minBet: Number(game.minBet),
+        maxBet: Number(game.maxBet),
+        isActive: game.isActive !== false,
+        todayStakes: penaltyTotalStakes,
+        todayPayouts: penaltyTotalPayouts,
+        houseNetProfit,
+        activeRtp: Number(game.rtpPercentage),
+        activePlayers: activePlayersCount,
+        currentRound: {
+          periodNumber: '#PENALTY_NATIONS_CUP',
+          status: activePlayersCount > 0 ? `LIVE PENALTY SHOOTOUT (${activePlayersCount} Active Strikers)` : 'PENALTY SHOOTOUT READY',
+          openCard: '⚽',
+          activeOverride: activePenaltyOverride ? `FORCED OVERRIDE ACTIVE: ${activePenaltyOverride}` : 'AUTOMATIC RTP ENGINE',
+          projectedNumber: activePenaltyOverride || `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          projectedColor: 'EMERALD',
+          projectedLabel: activePenaltyOverride ? `FORCED TARGET (${activePenaltyOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          activeBetsSummary: {
+            totalStaked: activeBetsList.reduce((acc, b) => acc + (b.amount || 0), 0),
+            totalBetsCount: activeBetsList.length,
+          },
+          activeBetsList,
+        },
+        nextRound: {
+          periodNumber: '#NEXT_PENALTY_ROUND',
+          projectedNumber: activePenaltyOverride || `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          projectedColor: 'EMERALD',
+          projectedLabel: activePenaltyOverride ? `FORCED TARGET (${activePenaltyOverride})` : `AUTOMATIC RTP (${game.rtpPercentage}%)`,
+          isOverride: !!activePenaltyOverride,
+        },
+        nextOverride: activePenaltyOverride || '',
+        settledPeriods,
+      };
+    }
+
     if (cleanId === 'crash' || cleanId === 'jet' || cleanId === 'pushparani') {
       let crashTotalStakes = 0;
       let crashTotalPayouts = 0;
@@ -2908,6 +3045,16 @@ export class AdminService {
         return { success: false, message: `Failed to reset Chicken Road history: ${err?.message || err}` };
       }
       return { success: true, message: 'Chicken Road 2 bet history and revenue have been reset to ₹0.00.' };
+    } else if (cleanId === 'penalty-shootout' || cleanId === 'penalty') {
+      try {
+        await this.db.penaltyShot.deleteMany({}).catch(() => {});
+        await this.db.penaltyResult.deleteMany({}).catch(() => {});
+        await this.db.penaltyShootoutRound.deleteMany({}).catch(() => {});
+      } catch (err: any) {
+        console.error('Error resetting Penalty Shootout history:', err?.message || err);
+        return { success: false, message: `Failed to reset Penalty Shootout history: ${err?.message || err}` };
+      }
+      return { success: true, message: 'Penalty Nations Cup bet history has been reset to ₹0.00.' };
     }
 
     return { success: false, message: `Unsupported game ID: ${cleanId}` };

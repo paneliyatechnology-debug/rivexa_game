@@ -105,6 +105,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   get chickenRoadTrafficPattern(): any { return (this.client as any).chickenRoadTrafficPattern; }
   get chickenRoadSettings(): any { return (this.client as any).chickenRoadSettings; }
   get chickenRoadAuditLog(): any { return (this.client as any).chickenRoadAuditLog; }
+  // ── Penalty Shootout models ────────────────────────────────────────
+  get penaltyShootoutRound(): any { return (this.client as any).penaltyShootoutRound; }
+  get penaltyShot(): any { return (this.client as any).penaltyShot; }
+  get penaltyResult(): any { return (this.client as any).penaltyResult; }
   // ── Game Session & Provider models ──────────────────────────────
   get gameProvider(): any { return (this.client as any).gameProvider; }
   get gameSession(): any { return (this.client as any).gameSession; }

@@ -23,6 +23,7 @@ async function main() {
     { slug: 'coin-flip', name: 'Coin Flip', category: 'arcade', engine: 'interactive', rtpPercentage: 98.0, minBet: 10, maxBet: 50000 },
     { slug: 'hilo', name: 'HILO', category: 'cards', engine: 'interactive', rtpPercentage: 96.0, minBet: 10, maxBet: 50000 },
     { slug: 'chicken-road', name: 'Chicken Road', category: 'arcade', engine: 'interactive', rtpPercentage: 97.0, minBet: 10, maxBet: 100000 },
+    { slug: 'penalty-shootout', name: 'Penalty Nations Cup', category: 'arcade', engine: 'interactive', rtpPercentage: 97.0, minBet: 10, maxBet: 100000 },
   ];
 
   for (const g of gamesData) {

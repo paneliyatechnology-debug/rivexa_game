@@ -121,7 +121,7 @@ export function TopHeader({
     : 'Guest';
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-[#08152E]/95 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
+    <header className="fixed top-0 left-0 right-0 z-50 bg-[#08152E]/95 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_24px_rgba(0,0,0,0.5)] after:absolute after:inset-x-0 after:bottom-0 after:h-[1px] after:bg-gradient-to-r after:from-transparent after:via-[#00D9FF]/35 after:to-transparent">
       {/* ── Top glass header bar ── */}
       <div className="px-2.5 sm:px-4 py-1.5 sm:py-2 flex items-center justify-between gap-1.5 sm:gap-3">
         {/* ── Left: Logo ── */}
@@ -292,16 +292,16 @@ export function TopHeader({
 export function BottomNavigation() {
   const pathname = usePathname();
 
-  const navItems: { label: string; icon: 'home' | 'gamepad' | 'wallet' | 'gift' | 'user'; href: string }[] = [
+  const navItems: { label: string; icon: 'home' | 'trophy' | 'gamepad' | 'wallet' | 'user'; href: string; badge?: string }[] = [
     { label: 'Home', icon: 'home', href: '/' },
+    { label: 'Sports', icon: 'trophy', href: '/sports', badge: 'LIVE' },
     { label: 'Games', icon: 'gamepad', href: '/#games' },
     { label: 'Wallet', icon: 'wallet', href: '/deposit' },
-    { label: 'Rewards', icon: 'gift', href: '/rewards' },
     { label: 'Profile', icon: 'user', href: '/profile' },
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#08152E]/98 backdrop-blur-2xl border-t border-white/10 h-[66px] flex items-center justify-around z-50 shadow-[0_-8px_32px_rgba(0,0,0,0.6)]">
+    <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-[#08152E]/98 backdrop-blur-2xl border-t border-white/10 h-[66px] flex items-center justify-around z-50 shadow-[0_-8px_32px_rgba(0,0,0,0.6)] before:absolute before:inset-x-0 before:top-0 before:h-[1px] before:bg-gradient-to-r before:from-transparent before:via-[#00D9FF]/40 before:to-transparent">
       {navItems.map((item) => {
         const isActive =
           pathname === item.href ||
@@ -316,7 +316,7 @@ export function BottomNavigation() {
             }`}
           >
             <div
-              className={`p-1.5 rounded-xl transition-all ${
+              className={`relative p-1.5 rounded-xl transition-all ${
                 isActive
                   ? 'bg-[#00E5A0]/12 border border-[#00E5A0]/30 shadow-[0_0_10px_rgba(0,229,160,0.25)]'
                   : ''
@@ -330,6 +330,11 @@ export function BottomNavigation() {
                 color="#7285AE"
                 glow
               />
+              {item.badge && (
+                <span className="absolute -top-1 -right-1.5 px-1 py-0.2 bg-rose-500 text-[7px] font-black text-white rounded-full leading-none shadow-sm animate-pulse">
+                  {item.badge}
+                </span>
+              )}
             </div>
             <span className={isActive ? 'text-[#00E5A0]' : 'text-[#7285AE]'}>{item.label}</span>
           </Link>

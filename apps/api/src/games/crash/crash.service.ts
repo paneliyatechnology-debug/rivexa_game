@@ -156,7 +156,7 @@ export class CrashService {
       where: { roundId: round.id },
       include: { user: true },
       orderBy: { createdAt: 'desc' },
-      take: 15,
+      take: 40,
     });
 
     const roundBets = roundBetsList.map((b: any) => ({
@@ -202,7 +202,7 @@ export class CrashService {
     const recentRoundsList = await this.db.crashRound.findMany({
       where: { status: 'CRASHED' },
       orderBy: { createdAt: 'desc' },
-      take: 12,
+      take: 30,
     });
     const history = recentRoundsList.map((r: any) => Number(Number(r.crashMultiplier).toFixed(2)));
 
@@ -218,7 +218,7 @@ export class CrashService {
       },
       secondsRemaining,
       currentMultiplier: currentMultiplier.toFixed(2),
-      history: history.length > 0 ? history : [3.81, 1.44, 2.31, 1.85, 4.20, 1.12, 12.40, 2.05],
+      history,
       userBet,
       userBets,
       roundBets,

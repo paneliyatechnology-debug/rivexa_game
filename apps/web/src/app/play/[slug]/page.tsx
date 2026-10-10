@@ -91,11 +91,11 @@ export default function PlayGamePage() {
     return <DiceGame />;
   }
 
-  if (slug === 'crash') {
+  if (slug === 'crash' || slug === 'aviator') {
     return <AviatorGame />;
   }
 
-  if (slug === 'jet') {
+  if (slug === 'jet' || slug === 'jetx') {
     return <JetXGame />;
   }
 

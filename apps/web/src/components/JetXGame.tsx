@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { getApiBaseUrl, getWsBaseUrl } from '@/lib/config';
@@ -8,6 +8,84 @@ import { io, Socket } from 'socket.io-client';
 
 import { SpribeAudioEngine } from '@/utils/spribeAudio';
 import ValidationErrorModal, { ValidationErrorType } from './ValidationErrorModal';
+import { getCalibratedXRatio, getCalibratedYRatio } from '@/lib/crash-calibration';
+
+interface WindStreak {
+  x: number;
+  y: number;
+  length: number;
+  speed: number;
+  alpha: number;
+  width: number;
+}
+
+interface SimulatedBet {
+  id: string;
+  userId?: string;
+  username: string;
+  amount: number;
+  targetMultiplier: number;
+  multiplier?: number;
+  payout?: number;
+  status: 'PENDING' | 'CASHED_OUT' | 'LOST';
+  cashedOutAt?: number;
+  isSimulated?: boolean;
+}
+
+const FAKE_USERS_POOL = [
+  'Aarav_99', 'Rahul***82', 'Pooja_K', 'Vikram_X', 'Amit_Winner',
+  'Aviator_Pro', 'Rohan_77', 'Deepak_B', 'Sneha_Sharma', 'Kabir_X',
+  'Prince_007', 'Rajesh_Patel', 'Karan_Pro', 'Ananya_21', 'Sunil_Reddy',
+  'Priya_G', 'Lucky_88', 'Sanjay_Trader', 'Harsh_V', 'Manish_Kumar',
+  'Aditi_Rao', 'Neeraj_Chopra', 'Jatin_777', 'Divya_S', 'Ritu_Queen',
+  'Gaurav_X', 'Vikas_Jet', 'Sachin_M', 'Ajay_Pilot', 'Bhavin_Ahmedabad',
+  'Ramesh_Bhai', 'Chirag_Surat', 'Mehul_01', 'Tarun_Max', 'Vijay_Casino',
+  'Kunal_Flyer', 'Dev_Aviator', 'Nikhil_99', 'Rakesh_Pro', 'Rohit_45',
+  'Akash_Sky', 'Yash_King', 'Mohit_Sharma', 'Varun_99', 'Alok_Singh',
+  'Hitesh_G', 'Pratik_92', 'Suresh_R', 'Naveen_Express', 'Kiran_V'
+];
+
+const COMMON_BET_AMOUNTS = [
+  50, 100, 100, 150, 200, 200, 300, 500, 500, 500,
+  800, 1000, 1000, 1500, 2000, 2500, 3000, 5000, 8000, 10000
+];
+
+function generateRealisticTargetMultiplier(): number {
+  const roll = Math.random();
+  if (roll < 0.40) {
+    return +(1.15 + Math.random() * 0.8).toFixed(2);
+  } else if (roll < 0.72) {
+    return +(2.0 + Math.random() * 1.8).toFixed(2);
+  } else if (roll < 0.88) {
+    return +(3.9 + Math.random() * 4.6).toFixed(2);
+  } else if (roll < 0.96) {
+    return +(8.6 + Math.random() * 9.4).toFixed(2);
+  } else {
+    return +(18.0 + Math.random() * 27.0).toFixed(2);
+  }
+}
+
+function generateSimulatedBetsForRound(seedStr: string): SimulatedBet[] {
+  const shuffledNames = [...FAKE_USERS_POOL].sort(() => Math.random() - 0.5);
+  const count = 26 + Math.floor(Math.random() * 9);
+  const bets: SimulatedBet[] = [];
+
+  for (let i = 0; i < count && i < shuffledNames.length; i++) {
+    const amount = COMMON_BET_AMOUNTS[Math.floor(Math.random() * COMMON_BET_AMOUNTS.length)];
+    const targetMultiplier = generateRealisticTargetMultiplier();
+    bets.push({
+      id: `sim-jetx-${seedStr}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      username: shuffledNames[i],
+      amount,
+      targetMultiplier,
+      multiplier: undefined,
+      payout: undefined,
+      status: 'PENDING',
+      isSimulated: true,
+    });
+  }
+  return bets.sort((a, b) => b.amount - a.amount);
+}
 
 export function JetXGame() {
   const { user: authUser, refreshBalance, balance: contextBalance } = useAuth();
@@ -88,6 +166,10 @@ export function JetXGame() {
   // Live sidebar & orders tab
   const [sidebarTab, setSidebarTab] = useState<'all' | 'my' | 'top'>('all');
   const [roundBets, setRoundBets] = useState<any[]>([]);
+  const [simulatedBets, setSimulatedBets] = useState<SimulatedBet[]>([]);
+  const lastSimRoundIdRef = useRef<string>('');
+  const prevSimStatusRef = useRef<string>('BETTING_OPEN');
+  const [mobileViewTab, setMobileViewTab] = useState<'game' | 'bets'>('game');
   const [myOrders, setMyOrders] = useState<any[]>([]);
 
   // Seed / Provably Fair Modal & Full History Modal
@@ -666,6 +748,85 @@ export function JetXGame() {
     }
   }, [status, currentMultiplier, userBetStatus1, activeBetId1, autoCashout1, userBetStatus2, activeBetId2, autoCashout2]);
 
+  // ==============================================================
+  // SIMULATED REAL-TIME BETS & LIVE CASHOUT ENGINE
+  // ==============================================================
+  // 1. Generate new batch of simulated bets on new round or betting phase
+  useEffect(() => {
+    if (roundId !== '—' && roundId !== lastSimRoundIdRef.current) {
+      lastSimRoundIdRef.current = roundId;
+      setSimulatedBets(generateSimulatedBetsForRound(roundId));
+    } else if (simulatedBets.length === 0) {
+      setSimulatedBets(generateSimulatedBetsForRound(String(Date.now())));
+    }
+  }, [roundId, simulatedBets.length]);
+
+  useEffect(() => {
+    if (status === 'BETTING_OPEN' && prevSimStatusRef.current !== 'BETTING_OPEN') {
+      setSimulatedBets(generateSimulatedBetsForRound(roundId !== '—' ? roundId : String(Date.now())));
+    }
+    prevSimStatusRef.current = status;
+  }, [status, roundId]);
+
+  // 2. Real-time cashouts as jet flies & multiplier ascends
+  useEffect(() => {
+    if (status === 'FLYING') {
+      setSimulatedBets(prev => {
+        let changed = false;
+        const next = prev.map(bet => {
+          if (bet.status === 'PENDING' && currentMultiplier >= bet.targetMultiplier) {
+            changed = true;
+            return {
+              ...bet,
+              status: 'CASHED_OUT' as const,
+              multiplier: bet.targetMultiplier,
+              payout: Math.round(bet.amount * bet.targetMultiplier * 100) / 100,
+              cashedOutAt: Date.now(),
+            };
+          }
+          return bet;
+        });
+        return changed ? next : prev;
+      });
+    } else if (status === 'CRASHED') {
+      setSimulatedBets(prev => {
+        let changed = false;
+        const next = prev.map(bet => {
+          if (bet.status === 'PENDING') {
+            changed = true;
+            return {
+              ...bet,
+              status: 'LOST' as const,
+            };
+          }
+          return bet;
+        });
+        return changed ? next : prev;
+      });
+    }
+  }, [status, currentMultiplier]);
+
+  // Merged Active Bets (Real Backend Bets + Realistic Live Simulated Bets)
+  const allActiveBets = useMemo(() => {
+    if (roundBets && roundBets.length > 0) {
+      const realIds = new Set(roundBets.map(b => String(b.id || b._id || b.username)));
+      const filteredSim = simulatedBets.filter(b => !realIds.has(b.id) && !realIds.has(b.username));
+      return [...roundBets, ...filteredSim];
+    }
+    return simulatedBets;
+  }, [roundBets, simulatedBets]);
+
+  // Top Sorted Bets (Ranked by Payout / High Roller Stakes)
+  const topBets = useMemo(() => {
+    const list = [...allActiveBets];
+    list.sort((a, b) => {
+      const valA = Number(a.payout || a.amount || 0);
+      const valB = Number(b.payout || b.amount || 0);
+      return valB - valA;
+    });
+    return list;
+  }, [allActiveBets]);
+
   // 60FPS CINEMATIC REAL-VIDEO CANVAS ANIMATION ENGINE WITH GIRL TAKEOFF JUMP & NO-PARACHUTE CRASH FALL
   // 60FPS GPU-ACCELERATED VECTOR JET ENGINE & CRASH PARTICLE SYSTEM
   useEffect(() => {
@@ -696,6 +857,22 @@ export function JetXGame() {
     let crashTime = 0;
     let crashCoords = { x: 0, y: 0 };
     let hasSpawnedCrash = false;
+
+    // Wind Streamlines for High-Speed Supersonic Flight Effect
+    let windStreaks: WindStreak[] = [];
+    const initWindStreaks = (w: number, h: number) => {
+      windStreaks = [];
+      for (let i = 0; i < 28; i++) {
+        windStreaks.push({
+          x: Math.random() * w,
+          y: Math.random() * h,
+          length: 50 + Math.random() * 90,
+          speed: 8 + Math.random() * 14,
+          alpha: 0.08 + Math.random() * 0.18,
+          width: 1 + Math.random() * 1.5,
+        });
+      }
+    };
 
     // Render Supersonic Jet Aircraft (Vector Graphic, Zero Image Artifacts)
     const drawJetAircraft = (
@@ -839,8 +1016,17 @@ export function JetXGame() {
     };
 
     const render = () => {
-      const width = (canvas.width = canvas.parentElement?.clientWidth || 800);
-      const height = (canvas.height = canvas.parentElement?.clientHeight || 450);
+      // 1. Resizing: ONLY update buffer when element dimensions actually change
+      // (Eliminates continuous GPU texture recreation & micro-stutter)
+      const targetW = canvas.parentElement?.clientWidth || 800;
+      const targetH = canvas.parentElement?.clientHeight || 450;
+      if (canvas.width !== targetW || canvas.height !== targetH) {
+        canvas.width = targetW;
+        canvas.height = targetH;
+        initWindStreaks(targetW, targetH);
+      }
+      const width = canvas.width;
+      const height = canvas.height;
       const timeSec = Date.now() / 1000;
 
       ctx.clearRect(0, 0, width, height);
@@ -909,7 +1095,7 @@ export function JetXGame() {
         ctx.stroke();
       }
 
-      // 3. Dynamic Multi-Sample Trajectory Wave & Altitude System (Upper/Down Circuit Wave Motion)
+      // 3. Dynamic Multi-Sample Trajectory Wave & Altitude System
       let targetProgressMult = 1.0;
       if (status === 'FLYING') {
         targetProgressMult = currentMultiplier;
@@ -921,70 +1107,103 @@ export function JetXGame() {
 
       // Smooth 60FPS Lerp Multiplier Interpolation
       animatedMultiplierRef.current += (targetProgressMult - animatedMultiplierRef.current) * 0.08;
-
-      // Safe Framed Viewport Target Bounds - Plane never flies off screen edge on long rounds
-      const originX = width * 0.08;
-      const originY = height * 0.82;
-      const targetX = width * (isMobileScreen ? 0.62 : 0.65);
-      const targetY = height * (isMobileScreen ? 0.38 : 0.35);
-
-      // Logarithmic continuous flight scaling (1.00x to 500.0x+)
       const currentMult = Math.max(1.0, animatedMultiplierRef.current);
-      const logVal = Math.min(1.0, Math.log(currentMult) / Math.log(60.0));
-      const easeProgress = Math.pow(logVal, 0.78);
 
-      // Multi-sample trajectory curve with dynamic upper circuit & down circuit wave harmonics
-      const numSamples = 50;
+      // Calibrated coordinates (1.50x reaches EXACTLY 50% middle of the screen!)
+      const startX = width * 0.04;
+      const startY = height * 0.82;
+      const planeX = width * getCalibratedXRatio(currentMult);
+      const rawPlaneY = height * getCalibratedYRatio(currentMult);
+
+      // Render Aerodynamic High-Speed Wind Streaks (rushing leftwards as supersonic jet flies forward)
+      if (status === 'FLYING' && windStreaks.length > 0) {
+        ctx.save();
+        const streakSpeedMultiplier = 1 + Math.min(1.5, (currentMult - 1.0) * 0.4);
+        windStreaks.forEach((streak) => {
+          streak.x -= streak.speed * streakSpeedMultiplier;
+          if (streak.x + streak.length < 0) {
+            streak.x = width + Math.random() * 80;
+            streak.y = Math.random() * height;
+            streak.length = 50 + Math.random() * 90;
+            streak.speed = 8 + Math.random() * 14;
+          }
+          ctx.strokeStyle = `rgba(255, 180, 220, ${streak.alpha})`;
+          ctx.lineWidth = streak.width;
+          ctx.beginPath();
+          ctx.moveTo(streak.x, streak.y);
+          ctx.lineTo(streak.x + streak.length, streak.y);
+          ctx.stroke();
+        });
+        ctx.restore();
+      }
+
+      // Aviator-style smooth slow breathing wave (uper niche slowly flying move kare)
+      const waveFreq = 1.3; // Slow, graceful 4.8s breathing cycle
+      const waveAmp = currentMult >= 2.0 ? 5.5 : 4.0;
+      const soarYOffset = (status === 'FLYING' && currentMult >= 1.2) ? Math.sin(timeSec * waveFreq) * waveAmp : 0;
+      const effectivePlaneY = rawPlaneY + soarYOffset;
+
+      // Quadratic Curve Control Point: horizontal takeoff curving smoothly upward
+      const cpX = startX + (planeX - startX) * 0.58;
+      const cpY = startY;
+
+      // Multi-sample trajectory curve
+      const numSamples = 40;
       const curvePoints: Array<{ x: number; y: number }> = [];
 
       for (let i = 0; i <= numSamples; i++) {
-        const u = i / numSamples;
-        const bx = originX + (targetX - originX) * easeProgress * u;
-        const by = originY - (originY - targetY) * easeProgress * Math.pow(u, 0.85);
-
-        curvePoints.push({
-          x: bx,
-          y: by,
-        });
+        const t = i / numSamples;
+        const bx = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * cpX + t * t * planeX;
+        const by = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * cpY + t * t * effectivePlaneY;
+        curvePoints.push({ x: bx, y: by });
       }
 
-      // Plane position is at the end of the dynamic trajectory curve
-      const tipPoint = curvePoints[curvePoints.length - 1];
-      const planeX = tipPoint.x;
-      const planeY = tipPoint.y;
-
-      // Tangent flight angle calculation from curve tip
-      const prevTipPoint = curvePoints[Math.max(0, curvePoints.length - 3)];
-      const flightAngle = Math.atan2(planeY - prevTipPoint.y, planeX - prevTipPoint.x);
+      // Stable, elegant cruise pitch (~ -7° incline like Aviator, no excessive tilting)
+      const baseCruiseAngle = -0.12;
+      const dx = 2 * (planeX - cpX);
+      const dy = 2 * (effectivePlaneY - cpY);
+      const tangentAngle = Math.atan2(dy, dx);
+      const calibratedFlightAngle = currentMult >= 1.50
+        ? baseCruiseAngle
+        : Math.max(-0.25, tangentAngle * 0.45);
 
       // Render Dynamic Wave Trajectory Path Line & Glowing Ribbon (During FLYING & CRASHED)
       if (status === 'FLYING' || status === 'CRASHED') {
         ctx.save();
-        ctx.shadowColor = '#ff2a5f';
-        ctx.shadowBlur = 20;
-
-        const pathGrad = ctx.createLinearGradient(originX, originY, planeX, planeY);
+        const pathGrad = ctx.createLinearGradient(startX, startY, planeX, effectivePlaneY);
         pathGrad.addColorStop(0, '#ff1a43');
         pathGrad.addColorStop(0.7, '#ff6b00');
         pathGrad.addColorStop(1, '#ffe600');
 
-        ctx.strokeStyle = pathGrad;
-        ctx.lineWidth = 5;
+        // Outer glow ribbon
+        ctx.strokeStyle = 'rgba(255, 42, 95, 0.22)';
+        ctx.lineWidth = 12;
         ctx.beginPath();
         ctx.moveTo(curvePoints[0].x, curvePoints[0].y);
-
-        for (let i = 1; i < curvePoints.length; i++) {
+        for (let i = 1; i < curvePoints.length - 1; i++) {
           ctx.lineTo(curvePoints[i].x, curvePoints[i].y);
         }
+        ctx.lineTo(planeX, effectivePlaneY);
+        ctx.stroke();
+
+        // Core bright trajectory line
+        ctx.strokeStyle = pathGrad;
+        ctx.lineWidth = 4.5;
+        ctx.beginPath();
+        ctx.moveTo(curvePoints[0].x, curvePoints[0].y);
+        for (let i = 1; i < curvePoints.length - 1; i++) {
+          ctx.lineTo(curvePoints[i].x, curvePoints[i].y);
+        }
+        ctx.lineTo(planeX, effectivePlaneY);
         ctx.stroke();
 
         // Shaded Gradient Fill Area Under Dynamic Path
-        ctx.lineTo(planeX, originY);
-        ctx.lineTo(originX, originY);
+        ctx.lineTo(planeX, startY);
+        ctx.lineTo(startX, startY);
         ctx.closePath();
-        const fillGrad = ctx.createLinearGradient(0, targetY, 0, originY);
-        fillGrad.addColorStop(0, 'rgba(255, 26, 64, 0.28)');
-        fillGrad.addColorStop(1, 'rgba(255, 26, 64, 0.02)');
+        const fillGrad = ctx.createLinearGradient(0, effectivePlaneY, 0, startY);
+        fillGrad.addColorStop(0, 'rgba(255, 26, 64, 0.25)');
+        fillGrad.addColorStop(1, 'rgba(255, 26, 64, 0.01)');
         ctx.fillStyle = fillGrad;
         ctx.fill();
         ctx.restore();
@@ -995,8 +1214,8 @@ export function JetXGame() {
         // Multi-stage Engine Exhaust Smoke Plumes
         for (let p = 0; p < 12; p++) {
           const pOffset = (timeSec * 50 + p * 7) % 70;
-          const px = planeX - pOffset * Math.cos(flightAngle) * 1.2;
-          const py = planeY - pOffset * Math.sin(flightAngle) * 1.2;
+          const px = planeX - pOffset * Math.cos(calibratedFlightAngle) * 1.2;
+          const py = effectivePlaneY - pOffset * Math.sin(calibratedFlightAngle) * 1.2;
           const pAlpha = 1 - pOffset / 70;
 
           ctx.fillStyle = `rgba(255, 40, 80, ${pAlpha * 0.35})`;
@@ -1006,20 +1225,20 @@ export function JetXGame() {
         }
 
         // Engine Pitch Sway & Subtle 3D Scale
-        const pitchSway = Math.sin(timeSec * 4) * 0.03;
-        const jetScale = 1.0 + easeProgress * 0.25;
+        const pitchSway = Math.sin(timeSec * 3) * 0.015;
+        const jetScale = 1.0 + Math.min(0.2, (currentMult - 1.0) * 0.08);
 
-        drawJetAircraft(ctx, planeX, planeY, flightAngle + pitchSway, jetScale, timeSec);
+        drawJetAircraft(ctx, planeX, effectivePlaneY, calibratedFlightAngle + pitchSway, jetScale, timeSec);
       } else if (status === 'BETTING_OPEN') {
         // IDLE STATE: Jet Resting at Launch Pad with Hover Idle
-        const idleHoverY = Math.sin(timeSec * 3) * 4;
-        drawJetAircraft(ctx, originX, originY + idleHoverY, -0.2, 0.95, timeSec);
+        const idleHoverY = Math.sin(timeSec * 2.2) * 2;
+        drawJetAircraft(ctx, startX, startY + idleHoverY, -0.12, 0.95, timeSec);
       } else if (status === 'CRASHED') {
         // 5. CRASH STATE: Impact Shake + Vector Particles & Metallic Shards
         if (!hasSpawnedCrash) {
           hasSpawnedCrash = true;
           crashTime = 0;
-          crashCoords = { x: planeX, y: planeY };
+          crashCoords = { x: planeX, y: effectivePlaneY };
 
           // Spawn 40+ Pure Vector Particles (Zero Image Slice Bugs)
           crashParticles = [];
@@ -1030,7 +1249,7 @@ export function JetXGame() {
             const speed = Math.random() * 8 + 2;
             crashParticles.push({
               x: planeX,
-              y: planeY,
+              y: effectivePlaneY,
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
               size: Math.random() * 4 + 2,
@@ -1049,7 +1268,7 @@ export function JetXGame() {
             const speed = Math.random() * 6 + 1.5;
             crashParticles.push({
               x: planeX,
-              y: planeY,
+              y: effectivePlaneY,
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
               size: Math.random() * 12 + 6,
@@ -1068,7 +1287,7 @@ export function JetXGame() {
             const speed = Math.random() * 3 + 0.5;
             crashParticles.push({
               x: planeX,
-              y: planeY,
+              y: effectivePlaneY,
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
               size: Math.random() * 18 + 12,
@@ -1242,10 +1461,32 @@ export function JetXGame() {
         </div>
       </header>
 
+      {/* Mobile Tab Switcher (Game Canvas vs Bet History) */}
+      <div className="flex md:hidden bg-[#140612] border-b border-[#2d0a22] p-1">
+        <button
+          type="button"
+          onClick={() => setMobileViewTab('game')}
+          className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
+            mobileViewTab === 'game' ? 'bg-[#2b0820] text-white' : 'text-slate-400'
+          }`}
+        >
+          Flight Canvas & Bet Controls
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileViewTab('bets')}
+          className={`flex-1 py-1 text-xs font-bold rounded-lg transition-all ${
+            mobileViewTab === 'bets' ? 'bg-[#2b0820] text-white' : 'text-slate-400'
+          }`}
+        >
+          Live Bets History ({allActiveBets.length})
+        </button>
+      </div>
+
       {/* Main Responsive Grid Layout */}
       <div className="flex-1 grid grid-cols-1 md:grid-cols-12 overflow-hidden min-h-0">
-        {/* Left Live Bets Sidebar (Desktop 3 cols) */}
-        <div className="hidden md:flex md:col-span-3 lg:col-span-3 bg-[#11050f] border-r border-[#2d0a22] flex-col overflow-hidden">
+        {/* Left Live Bets Sidebar (Desktop 3 cols / Mobile Tab) */}
+        <div className={`${mobileViewTab === 'bets' ? 'flex' : 'hidden'} md:flex md:col-span-3 lg:col-span-3 bg-[#11050f] border-r border-[#2d0a22] flex-col overflow-hidden`}>
           <div className="p-2 border-b border-[#2d0a22] flex items-center gap-1 bg-[#170615]">
             <button
               onClick={() => setSidebarTab('all')}
@@ -1279,9 +1520,18 @@ export function JetXGame() {
             </button>
           </div>
 
-          <div className="px-3 py-2 text-[11px] font-bold text-slate-400 border-b border-[#2d0a22] flex items-center justify-between">
-            <span>PLAYER / BET</span>
-            <span>MULT / PAYOUT</span>
+          <div className="px-3 py-1.5 bg-[#140612] border-b border-[#2d0a22] flex items-center justify-between text-[11px] font-mono">
+            <span className="text-slate-400 font-bold">
+              {sidebarTab === 'all' ? `ALL BETS (${allActiveBets.length})` : sidebarTab === 'my' ? `MY BETS (${myOrders.length})` : `TOP BETS (${topBets.length})`}
+            </span>
+            <span className="text-emerald-400 font-bold">INR Verified</span>
+          </div>
+
+          <div className="px-3 py-1 bg-[#0e040c] border-b border-[#20081a] grid grid-cols-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <span>User</span>
+            <span className="text-right">Bet INR</span>
+            <span className="text-right">X</span>
+            <span className="text-right">Cash Out</span>
           </div>
 
           <div className="flex-1 overflow-y-auto divide-y divide-[#20081b] scrollbar-thin">
@@ -1289,49 +1539,86 @@ export function JetXGame() {
               myOrders.length === 0 ? (
                 <div className="p-4 text-center text-xs text-slate-500 font-medium">No order history found</div>
               ) : (
-                myOrders.map((ord) => (
-                  <div key={ord.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-[#1a0817]">
-                    <div>
-                      <div className="font-bold text-slate-200">₹{ord.amount.toFixed(2)}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{new Date(ord.createdAt).toLocaleTimeString()}</div>
+                myOrders.map((ord, i) => {
+                  const isWon = ord.status === 'WON' || ord.status === 'CASHED_OUT';
+                  const isLost = ord.status === 'LOST' || ord.status === 'CRASHED';
+                  return (
+                    <div key={ord.id || i} className={`px-3 py-2 grid grid-cols-4 items-center text-xs font-mono transition-colors hover:bg-[#1a0817] ${isWon ? 'bg-emerald-950/20' : ''}`}>
+                      <span className="text-slate-300 font-bold truncate">You</span>
+                      <span className="text-right font-bold text-white">₹{Number(ord.amount).toFixed(2)}</span>
+                      <span className={`text-right font-bold ${isWon ? 'text-emerald-400' : isLost ? 'text-rose-500' : 'text-amber-400 animate-pulse'}`}>
+                        {isWon ? `${Number(ord.multiplier || 0).toFixed(2)}x` : isLost ? 'Crashed' : 'In Flight'}
+                      </span>
+                      <span className={`text-right font-bold ${isWon ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {isWon ? `₹${Number(ord.payout).toFixed(2)}` : '0.00'}
+                      </span>
                     </div>
+                  );
+                })
+              )
+            ) : sidebarTab === 'top' ? (
+              topBets.length === 0 ? (
+                <div className="p-4 text-center text-xs text-slate-500 font-medium">Waiting for top active bets...</div>
+              ) : (
+                topBets.map((b, i) => {
+                  const isCashed = b.status === 'CASHED_OUT' || b.status === 'WON';
+                  return (
+                    <div key={b.id || i} className={`px-3 py-1.5 grid grid-cols-4 items-center text-xs font-mono transition-colors hover:bg-[#1a0817] ${isCashed ? 'bg-emerald-950/25 border-l-2 border-emerald-500' : 'border-l-2 border-transparent'}`}>
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span className="w-4 h-4 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[9px] font-bold shrink-0">
+                          👑
+                        </span>
+                        <span className="text-slate-300 truncate font-medium">{b.username}</span>
+                      </div>
+                      <span className="text-right font-bold text-slate-200">₹{Number(b.amount).toFixed(2)}</span>
+                      <div className="text-right">
+                        {isCashed ? (
+                          <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[11px]">
+                            {Number(b.multiplier).toFixed(2)}x
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">-</span>
+                        )}
+                      </div>
+                      <span className={`text-right font-bold ${isCashed ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {isCashed ? `₹${Number(b.payout).toFixed(2)}` : '-'}
+                      </span>
+                    </div>
+                  );
+                })
+              )
+            ) : allActiveBets.length === 0 ? (
+              <div className="p-4 text-center text-xs text-slate-500 font-medium">Waiting for player bets in this round...</div>
+            ) : (
+              allActiveBets.map((b, i) => {
+                const isCashed = b.status === 'CASHED_OUT' || b.status === 'WON';
+                const isLost = b.status === 'LOST';
+                return (
+                  <div key={b.id || i} className={`px-3 py-1.5 grid grid-cols-4 items-center text-xs font-mono transition-all duration-300 hover:bg-[#1a0817] ${isCashed ? 'bg-emerald-950/25 border-l-2 border-emerald-500' : isLost ? 'border-l-2 border-rose-500/30 opacity-70' : 'border-l-2 border-transparent'}`}>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold shrink-0 ${isCashed ? 'bg-emerald-500/20 text-emerald-400' : isLost ? 'bg-rose-500/20 text-rose-400' : 'bg-rose-600/30 text-rose-400'}`}>
+                        {isCashed ? '✓' : isLost ? '✕' : '👤'}
+                      </span>
+                      <span className={`truncate font-medium ${isCashed ? 'text-emerald-200' : 'text-slate-300'}`}>{b.username}</span>
+                    </div>
+                    <span className="text-right font-bold text-slate-200">₹{Number(b.amount).toFixed(2)}</span>
                     <div className="text-right">
-                      {ord.status === 'CASHED_OUT' ? (
-                        <div className="font-black text-emerald-400 font-mono">
-                          {ord.multiplier.toFixed(2)}x (+₹{ord.payout.toFixed(2)})
-                        </div>
-                      ) : ord.status === 'PENDING' ? (
-                        <span className="text-amber-400 font-bold animate-pulse">IN FLIGHT</span>
+                      {isCashed ? (
+                        <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[11px]">
+                          {Number(b.multiplier).toFixed(2)}x
+                        </span>
+                      ) : isLost ? (
+                        <span className="text-rose-500/60 text-[10px]">Crashed</span>
                       ) : (
-                        <span className="text-rose-500 font-bold">CRASHED</span>
+                        <span className="text-slate-500 text-[11px]">-</span>
                       )}
                     </div>
-                  </div>
-                ))
-              )
-            ) : (
-              roundBets.map((b) => (
-                <div key={b.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-[#1a0817]">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-rose-950 text-rose-300 font-black text-[10px] flex items-center justify-center border border-rose-800/40">
-                      {b.username.charAt(0).toUpperCase()}
+                    <span className={`text-right font-bold ${isCashed ? 'text-emerald-400 font-black' : isLost ? 'text-rose-500/50' : 'text-slate-500'}`}>
+                      {isCashed ? `₹${Number(b.payout).toFixed(2)}` : isLost ? '0.00' : '-'}
                     </span>
-                    <div>
-                      <div className="font-bold text-slate-200 text-[11px]">{b.username}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">₹{b.amount.toFixed(2)}</div>
-                    </div>
                   </div>
-                  <div className="text-right font-mono">
-                    {b.status === 'CASHED_OUT' ? (
-                      <span className="font-black text-emerald-400 text-xs">
-                        {b.multiplier.toFixed(2)}x (+₹{b.payout.toFixed(2)})
-                      </span>
-                    ) : (
-                      <span className="text-slate-500 text-[11px]">-</span>
-                    )}
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
             {sidebarTab === 'my' && (
               <div className="p-2 border-t border-[#2d0a22]">
@@ -1344,10 +1631,23 @@ export function JetXGame() {
               </div>
             )}
           </div>
+
+          {/* Bottom Provably Fair Verification Indicator */}
+          <div className="p-2 bg-[#0e040c] border-t border-[#2d0a22] text-[10px] font-mono text-slate-400 text-center flex items-center justify-center gap-1 shrink-0">
+            <span className="text-rose-400">🛡️</span>
+            <span>This game is</span>
+            <button
+              type="button"
+              onClick={fetchPeriodHistory}
+              className="text-rose-400 hover:underline font-bold"
+            >
+              Provably Fair
+            </button>
+          </div>
         </div>
 
         {/* Right Main Game Area */}
-        <div className="col-span-1 md:col-span-9 lg:col-span-9 flex flex-col bg-[#0b030a] relative min-h-0 overflow-hidden">
+        <div className={`${mobileViewTab === 'game' ? 'flex' : 'hidden md:flex'} col-span-1 md:col-span-9 lg:col-span-9 flex flex-col bg-[#0b030a] relative min-h-0 overflow-hidden`}>
           {/* Top Multiplier History Strip */}
           <div className="h-9 sm:h-10 bg-[#140612] border-b border-[#2d0a22] px-2 sm:px-3 flex items-center justify-between gap-1.5 shrink-0 relative overflow-hidden">
             <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-1 flex-1 min-w-0 touch-pan-x" style={{ WebkitOverflowScrolling: 'touch' }}>
